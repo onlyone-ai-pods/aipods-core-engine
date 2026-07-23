@@ -4,10 +4,17 @@ Este repositorio contiene la documentación del proyecto y la suite de especific
 
 ## 📄 Estructura de Documentación
 
-* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la documentación (`1.0.0`).
-* **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 10 Épicas y Historias de Usuario consolidadas.
+* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la documentación (`1.0.1`).
+* **[`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE):** Licencia Propietaria y Confidencial.
+* **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 10 Épicas e Historias de Usuario consolidadas.
 * **[`docs/SDD.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD.md):** Documento de Diseño de Software (High-level Architecture & Multi-tenancy).
 * **[`specs/`](file:///home/martin/server/onlyone%20ai%20pods/specs/README.md):** Suite de especificaciones SDD (Smart Router, RAG, Multi-Tenant, Caché, Pods AFIP/EvoCRM/Social/SCM y OpenAPI contract).
+
+---
+
+## 🔒 Licencia
+
+Este proyecto y su documentación están protegidos bajo una **Licencia Propietaria y Confidencial**. Todos los derechos reservados © 2026 Martin Llanos. Ver el archivo [`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE) para más detalles.
 
 ---
 
