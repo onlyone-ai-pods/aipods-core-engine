@@ -4,11 +4,11 @@ Este repositorio contiene la documentación del proyecto y la suite completa de 
 
 ## 📄 Estructura de Documentación
 
-* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`4.2.1`).
+* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`4.3.0`).
 * **[`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE):** Licencia Propietaria del Autor (Martin Llanos).
 * **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 10 Épicas e Historias de Usuario consolidadas.
 * **[`docs/SDD.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD.md):** Documento de Diseño de Software (Arquitectura Enterprise en Go, PostgreSQL 16 Enterprise, Qdrant Cluster, Redis Active-Active, NATS JetStream, Portales Aislados, OAuth2/OIDC, OpenTelemetry, DRP RPO<1min, FinOps y Cumplimiento ISO 9001, SOC 2 Type II & ISO 27001).
-* **[`docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md):** Checklist de Requisitos Previos, Cuentas de Plataformas, APIs, Docker Compose local y Datasets de Prueba.
+* **[`docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md):** Guía Completa de Onboarding, Arquitectura Multi-Repositorio (`onlyone-ai-pods`), Flujo `gh` CLI y Estándar de Ramas.
 * **[`docs/SDD_ENGINEERING_FEEDBACK.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD_ENGINEERING_FEEDBACK.md):** Informe de Devolución de Ingeniería SDD.
 * **[`specs/`](file:///home/martin/server/onlyone%20ai%20pods/specs/README.md):** Suite Completa de 20 Especificaciones SDD organizada en **4 Dominios Temáticos** (`01_architecture_core/`, `02_security_and_compliance/`, `03_plugin_and_skills/`, `04_customer_portal_growth/`, `pods/` y `api/`).
 * **[`cmd/server/main.go`](file:///home/martin/server/onlyone%20ai%20pods/cmd/server/main.go):** Backend en Go 1.22+ compilado con endpoints `/healthz` y `/api/v1/chat/completions` integrados con `tenant`, `router`, y `pod/afip`.
