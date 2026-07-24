@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables para validar tanto código como respuestas de los modelos LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit, Red-Teaming, Sandbox de Clientes, Justificaciones & Límites, Protocolo Mandatorio Dry-Run, Gobernanza Adaptativa de Políticas, Cumplimiento ISO 9001 & SOC 2, Mejora Continua por Feedback de Usuario).
+3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit, Red-Teaming, Sandbox de Clientes, Justificaciones & Límites, Protocolo Mandatorio Dry-Run, Gobernanza Adaptativa de Políticas, Cumplimiento ISO 9001 & SOC 2, Mejora Continua, Rebanadas Verticales & Roadmap Incremental).
 
 ---
 
@@ -37,7 +37,8 @@ specs/
 │   ├── 14_dry_run_execution_protocol_spec.md # Protocolo Mandatorio Dry-Run & Aprobación Humana
 │   ├── 15_pod_standards_and_policy_governance_spec.md # Estándares de Pods & Gobernanza Adaptativa de Políticas
 │   ├── 16_iso9001_soc2_iso27001_compliance_spec.md # Marco de Cumplimiento ISO 9001, SOC 2 Type II & ISO 27001
-│   └── 17_continuous_improvement_and_user_feedback_spec.md # Mejora Continua por Feedback de Usuario & RLHF Loop
+│   ├── 17_continuous_improvement_and_user_feedback_spec.md # Mejora Continua por Feedback de Usuario & RLHF Loop
+│   └── 18_incremental_execution_roadmap_and_vertical_slicing_spec.md # Roadmap Incremental & Rebanadas Verticales
 ├── pods/                               # Especificaciones de AI Pods por Dominio
 │   ├── 01_afip_finance_spec.md         # Pod AFIP / ARCA & Balances Financieros
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
@@ -75,3 +76,4 @@ specs/
 | **Estándares & Perfiles de Política**| Gobernanza Adaptativa | [`specs/core/15_pod_standards_and_policy_governance_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/15_pod_standards_and_policy_governance_spec.md) |
 | **Cumplimiento ISO 9001 & SOC2/27001**| Certificación & Audibilidad | [`specs/core/16_iso9001_soc2_iso27001_compliance_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/16_iso9001_soc2_iso27001_compliance_spec.md) |
 | **Mejora Continua & Feedback Loop**| ISO 9001 QMS & RLHF | [`specs/core/17_continuous_improvement_and_user_feedback_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/17_continuous_improvement_and_user_feedback_spec.md) |
+| **Vertical Slicing & Incremental Roadmap**| Estrategia de Ejecución | [`specs/core/18_incremental_execution_roadmap_and_vertical_slicing_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/18_incremental_execution_roadmap_and_vertical_slicing_spec.md) |
