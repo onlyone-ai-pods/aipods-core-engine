@@ -2,41 +2,42 @@
 
 **Proyecto:** AI Pods Enterprise SaaS Platform (Universal Multi-Tenant API & ERP Suite)  
 **Organización en GitHub:** `https://github.com/onlyone-ai-pods`  
-**Estado:** COMPLETO Y LISTO PARA SPRINT 1  
+**Estado:** COMPLETO, SEGREGADO Y LISTO PARA SPRINT 1  
 
 ---
 
-## 🏛️ 1. Arquitectura Multi-Repositorio & Ecosistema
+## 🏛️ 1. Arquitectura Multi-Repositorio & Rutas del Workspace
 
-El proyecto se gestiona mediante 4 repositorios oficiales dentro de la Organización de GitHub **`onlyone-ai-pods`**:
+El proyecto se compone de 4 repositorios segregados dentro de la Organización **`onlyone-ai-pods`**. Para el desarrollo local y entornos de pares de IA (Antigravity), las rutas absolutas de cada módulo se distribuyen así:
 
 ```text
-github.com/onlyone-ai-pods/
-├── aipods-docs/                  [DOCS] Specs SDD, Backlog, SDD.md, OpenAPI yaml
-├── aipods-core-engine/           [BACKEND] Go 1.22 API Server, Smart Router, RAG, DBs
-├── aipods-frontend-customer/     [FRONTEND] React 18 / Vite Portal Público & Sandbox Interactivo
-└── aipods-frontend-admin/        [ADMIN] React 18 / Vite Portal Interno & Senior Review Hub
+/home/martin/server/
+├── onlyone ai pods/               [aipods-docs] Specs SDD, Backlog, SDD.md, OpenAPI yaml
+├── aipods-core-engine/            [aipods-core-engine] Go 1.22 API Server, Smart Router, RAG, DBs
+├── aipods-frontend-customer/      [aipods-frontend-customer] React 18 / Vite Portal Público & Sandbox
+└── aipods-frontend-admin/         [aipods-frontend-admin] React 18 / Vite Portal Interno & Senior Review Hub
 ```
 
 ---
 
 ## 🛠️ 2. Flujo de Clonado y Onboarding para Desarrolladores Internos
 
-Cualquier desarrollador interno del equipo ejecuta 3 pasos sencillos para obtener y levantar todo el proyecto localmente:
+Cualquier desarrollador interno del equipo ejecuta los siguientes pasos para obtener y levantar el entorno completo localmente:
 
 ```bash
-# 1. Crear el directorio workspace en su máquina local
-mkdir -p ~/workspace/onlyone-ai-pods && cd ~/workspace/onlyone-ai-pods
+# 1. Crear el directorio servidor local en su máquina
+mkdir -p ~/server && cd ~/server
 
 # 2. Clonar los 4 repositorios con GitHub CLI (gh)
-gh repo clone onlyone-ai-pods/aipods-docs
+gh repo clone onlyone-ai-pods/aipods-docs "onlyone ai pods"
 gh repo clone onlyone-ai-pods/aipods-core-engine
 gh repo clone onlyone-ai-pods/aipods-frontend-customer
 gh repo clone onlyone-ai-pods/aipods-frontend-admin
 
-# 3. Levantar la pila de infraestructura local
-cd aipods-core-engine
+# 3. Levantar la pila de infraestructura local en Go
+cd ~/server/aipods-core-engine
 docker compose -f docker-compose.dev.yml up -d
+go test -v ./...
 ```
 
 ---
