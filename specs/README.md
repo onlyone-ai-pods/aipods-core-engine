@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables para validar tanto código como respuestas de los modelos LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictas (ej. no filtración entre tenants, umbrales de caché, citas obligatorias RAG, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit).
+3. **Restricciones de Seguridad e Invariantes:** Reglas strictly enforced (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit).
 
 ---
 
@@ -29,7 +29,8 @@ specs/
 │   ├── 06_lifecycle_and_governance_spec.md # Ciclo de Vida, Gobernanza & Rollback Automático
 │   ├── 07_enterprise_architecture_parameters_spec.md # AuthN/AuthZ, DRP, OpenTelemetry, FinOps & DevOps
 │   ├── 08_clean_code_and_security_linting_spec.md # Código Limpio, Security Linters (gosec) & CI Gates
-│   └── 09_plugin_scaffold_and_agentic_skills_spec.md # SDK, Scaffold & Agentic Skills (.aipods/skills/)
+│   ├── 09_plugin_scaffold_and_agentic_skills_spec.md # SDK, Scaffold & Agentic Skills External Plugins
+│   └── 10_internal_core_agentic_skills_spec.md # Agentic Skills Internos para el Equipo Core (.aipods/skills/)
 ├── pods/                               # Especificaciones de AI Pods por Dominio
 │   ├── 01_afip_finance_spec.md         # Pod AFIP / ARCA & Balances Financieros
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
@@ -59,3 +60,4 @@ specs/
 | **Parámetros Empresariales**| Seguridad/Ops/FinOps | [`specs/core/07_enterprise_architecture_parameters_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/07_enterprise_architecture_parameters_spec.md) |
 | **Código Limpio & Linters** | Calidad & Audibilidad | [`specs/core/08_clean_code_and_security_linting_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/08_clean_code_and_security_linting_spec.md) |
 | **Plugin Scaffold & AI Skills**| Dev External Ecosystem | [`specs/core/09_plugin_scaffold_and_agentic_skills_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/09_plugin_scaffold_and_agentic_skills_spec.md) |
+| **Internal Team Agentic Skills**| Dev Internal Core Team | [`specs/core/10_internal_core_agentic_skills_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/10_internal_core_agentic_skills_spec.md) |

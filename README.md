@@ -4,12 +4,12 @@ Este repositorio contiene la documentación del proyecto y la suite de especific
 
 ## 📄 Estructura de Documentación
 
-* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la documentación (`1.7.0`).
+* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la documentación (`1.8.0`).
 * **[`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE):** Licencia Propietaria y Confidencial.
 * **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 10 Épicas e Historias de Usuario consolidadas.
 * **[`docs/SDD.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD.md):** Documento de Diseño de Software (Arquitectura Enterprise en Go, PostgreSQL 16 Enterprise, Qdrant Cluster, Redis Active-Active, NATS JetStream, Portales Aislados, OAuth2/OIDC, OpenTelemetry, DRP RPO<1min y FinOps).
 * **[`docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md):** Checklist de Requisitos Previos, Cuentas de Plataformas, APIs, Docker Compose local y Datasets de Prueba para iniciar codificación.
-* **[`specs/`](file:///home/martin/server/onlyone%20ai%20pods/specs/README.md):** Suite de especificaciones SDD (Smart Router, RAG, Multi-Tenant, Caché, Arquitectura de Plugins, Gobernanza de Releases & Rollback Automático, Parámetros Empresariales AuthN/AuthZ/DRP/FinOps, Código Limpio & Security Linters, **Scaffold de Plugins & Agentic Skills Kit (`.aipods/skills/`)**, Pods AFIP/EvoCRM/Social/SCM y OpenAPI contract).
+* **[`specs/`](file:///home/martin/server/onlyone%20ai%20pods/specs/README.md):** Suite de especificaciones SDD (Smart Router, RAG, Multi-Tenant, Caché, Arquitectura de Plugins, Gobernanza de Releases, Parámetros Empresariales AuthN/AuthZ/DRP/FinOps, Código Limpio & Security Linters, Scaffold & Skills de Plugins, **Skills de IA para el Equipo Interno Core (`.aipods/skills/`)**, Pods AFIP/EvoCRM/Social/SCM y OpenAPI contract).
 
 ---
 
