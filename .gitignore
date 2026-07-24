@@ -1,0 +1,29 @@
+# Environment variables & secrets
+.env
+.env.local
+*.pem
+*.key
+*.crt
+
+# Binaries & build outputs
+bin/
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+server
+
+# IDE & OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Node modules & vendor
+node_modules/
+vendor/

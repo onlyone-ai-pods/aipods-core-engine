@@ -6,33 +6,29 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/martinllanos/only-ai-pods/internal/router"
+	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
 
 type ChatRequest struct {
 	TenantID string `json:"tenant_id" binding:"required"`
 	Message  string `json:"message" binding:"required"`
-}
-
-type ChatResponse struct {
-	PodID      string   `json:"pod_id"`
-	Answer     string   `json:"answer"`
-	Citations  []string `json:"citations"`
-	IsDryRun   bool     `json:"is_dry_run"`
-	Status     string   `json:"status"`
+	DryRun   *bool  `json:"dry_run,omitempty"`
 }
 
 func main() {
 	r := gin.Default()
+	smartRouter := router.NewSmartRouter()
 
 	// Healthcheck Endpoint
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "3.3.0",
+			"version": "4.1.0",
 		})
 	})
 
-	// Sprint 1 MVP: Chat Endpoint matching specs/pods/01_afip_finance_spec.md
+	// Sprint 1 MVP: Chat Endpoint matching specs/01_architecture_core/01_smart_router_spec.md
 	r.POST("/api/v1/chat/completions", func(c *gin.Context) {
 		var req ChatRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -40,15 +36,19 @@ func main() {
 			return
 		}
 
-		// Sprint 1 Mock Response for AFIP Certificate Query
-		res := ChatResponse{
-			PodID:  "POD_AFIP_FINANCE",
-			Answer: "Para generar la clave privada y el archivo CSR para AFIP en Odoo, ejecute el siguiente comando OpenSSL en su terminal:\n\n```bash\nopenssl req -new -key privada.key -out pedido.csr\n```\n\nPosteriormente, cargue el certificado `.crt` emitido por AFIP en la configuración de la compañía en Odoo.",
-			Citations: []string{
-				"Guia_AFIP_Certificados_v1.pdf (Pagina 4)",
-			},
-			IsDryRun: true,
-			Status:   "SUCCESS",
+		dryRun := true
+		if req.DryRun != nil {
+			dryRun = *req.DryRun
+		}
+
+		// Inject Tenant Context
+		ctx := tenant.WithTenantID(c.Request.Context(), req.TenantID)
+
+		// Route and Execute via Smart Router
+		res, err := smartRouter.RouteAndExecute(ctx, req.TenantID, req.Message, dryRun)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 
 		c.JSON(http.StatusOK, res)
