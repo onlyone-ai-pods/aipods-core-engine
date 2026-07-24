@@ -4,57 +4,19 @@ Plataforma SaaS basada en arquitectura RAG (Retrieval-Augmented Generation) dise
 
 ---
 
-## 📌 Epicas Consolidadas
+## 📌 Épicas Consolidadas
 
 ### 👑 ÉPICA 1: AI Pod - AFIP / ARCA & Balances Financieros
 *Automatización de asistencia técnica burocrática, normativas fiscales y reportes financieros.*
 
-* **HU 1.1 - Generación y Validación de Claves AFIP:**
-  > **Como** consultor o usuario empresarial,  
-  > **quiero** consultar al AI Pod cómo generar la clave privada y archivo CSR para AFIP en mi sistema,  
-  > **para** obtener el comando OpenSSL exacto y la guía paso a paso sin cometer errores de formato.
-
-* **HU 1.2 - Diagnóstico de Balances Financieros:**
-  > **Como** analista financiero o gerente,  
-  > **quiero** subir mis reportes de balance exportados en PDF o CSV al AI Pod,  
-  > **para** recibir un análisis estructurado de liquidez, solvencia y EBITDA en lenguaje natural.
-
----
-
 ### 👑 ÉPICA 2: AI Pod - EvoCRM & Helpdesk Integrado
 *Asistencia omnicanal y gestión de tickets de soporte conectada a WhatsApp y ERPs.*
-
-* **HU 2.1 - Integración EvoCRM y Helpdesk:**
-  > **Como** especialista de soporte,  
-  > **quiero** consultar cómo configurar webhooks y credenciales entre Helpdesk y EvoCRM (WhatsApp),  
-  > **para** resolver problemas de tokens o webhooks caídos instantáneamente.
-
----
 
 ### 👑 ÉPICA 3: AI Pod - Social Marketing & Omnicanalidad
 *Diagnóstico y configuración de APIs de Meta, Instagram y campañas de marketing.*
 
-* **HU 3.1 - Troubleshooting de API de Meta/Instagram:**
-  > **Como** responsable de marketing digital,  
-  > **quiero** consultar la causa por la que se desconectó el token de la cuenta de Instagram/Meta,  
-  > **para** obtener la solución paso a paso y re-vincular la cuenta sin perder leads.
-
----
-
 ### 👑 ÉPICA 4: AI Pod - Cadena de Suministros (SCM, WMS, MRP, Compras)
 *Optimización logística, reglas de reabastecimiento e imputación de Landed Costs en ERPs.*
-
-* **HU 4.1 - Reglas de Reabastecimiento e Inventario (WMS/MRP):**
-  > **Como** jefe de depósito o logística,  
-  > **quiero** consultar la mejor estrategia para configurar puntos de pedido min/max en el ERP,  
-  > **para** obtener una guía paso a paso de cómo configurar reglas Push/Pull y ubicaciones.
-
-* **HU 4.2 - Importaciones y Landed Costs:**
-  > **Como** analista de compras internacionales,  
-  > **quiero** prorratear gastos de flete y aranceles de importación sobre un embarque,  
-  > **para** que el costo estándar/promedio refleje el valor real de importación en el ERP.
-
----
 
 ### 👑 ÉPICA 5: Smart Router & Clasificador de Intenciones
 *Orquestación inteligente entre AI Pods.*
@@ -73,3 +35,16 @@ Plataforma SaaS basada en arquitectura RAG (Retrieval-Augmented Generation) dise
 
 ### 👑 ÉPICA 10: Ingesta Asíncrona de Balances Extensos
 *Procesamiento no bloqueante de archivos masivos vía NATS JetStream.*
+
+### 👑 ÉPICA 11: AI Pod por Defecto - GitHub API & Odoo.sh DevOps Integrator
+*Automatización de creación de repositorios en GitHub del cliente, gestión de PRs y vinculación de despliegues en la plataforma PaaS Odoo.sh.*
+
+* **HU 11.1 - Creación Automática de Repositorios GitHub:**
+  > **Como** desarrollador o consultor,  
+  > **quiero** solicitar al AI Pod la creación de un nuevo repositorio de módulo en GitHub,  
+  > **para** obtener la estructura de código `__manifest__.py` y vinculación automatizada.
+
+* **HU 11.2 - Despliegues en Odoo.sh:**
+  > **Como** responsable de proyectos Odoo,  
+  > **quiero** vincular ramas de código con entornos de Staging o Producción en Odoo.sh,  
+  > **para** desplegar características probadas sin salir de la interfaz de chat.
