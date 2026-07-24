@@ -1,10 +1,10 @@
 # 🚀 AI Pods Enterprise (SaaS) - Documentación & Especificaciones
 
-Este repositorio contiene la documentación del proyecto y la suite completa de especificaciones ejecutables de **AI Pods Enterprise**, una plataforma SaaS universal, multi-tenant y agnóstica para la creación, ejecución y orquestación de agentes inteligentes (**AI Pods**) conectables a cualquier ERP (Odoo, SAP, Salesforce), CRM (EvoCRM), APIs, bases de datos o portales web.
+Este repositorio contiene la documentación del proyecto y la suite completa de especificaciones ejecutables de **AI Pods Enterprise**, la plataforma SaaS de **"Servicio como Software" (Service-as-Software)** universal, multi-tenant y agnóstica para la creación, ejecución y orquestación de agentes inteligentes (**AI Pods**) conectables a cualquier ERP (Odoo, SAP, Salesforce), CRM (EvoCRM), APIs, bases de datos o portales web.
 
 ## 📄 Estructura de Documentación
 
-* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`4.8.0`).
+* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`4.9.0`).
 * **[`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE):** Licencia Propietaria del Autor (Martin Llanos).
 * **[`.aipods/skills/`](file:///home/martin/server/onlyone%20ai%20pods/.aipods/skills/):** Kit Físico de Agentic Skills (`core-go-architect`, `multi-tenant-security`, `frontend-ui-architect`, `sdd-spec-writer`) y reglas Git (`github_workflow.md`).
 * **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 11 Épicas e Historias de Usuario consolidadas.
