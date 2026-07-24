@@ -1,7 +1,7 @@
 # 🛠️ Spec-Driven Development (SDD) Framework
-## Proyecto AI Pods para Consultoría Odoo (SaaS)
+## Proyecto AI Pods Enterprise SaaS Platform
 
-Este directorio contiene las **23 especificaciones formales ejecutables** organizadas en 4 Dominios de Arquitectura que dirigen el desarrollo, las pruebas BDD y la gobernanza de la plataforma.
+Este directorio contiene las **24 especificaciones formales ejecutables** organizadas en 4 Dominios de Arquitectura que dirigen el desarrollo, las pruebas BDD y la gobernanza de la plataforma.
 
 ---
 
@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables en Go (`godog`) para validar código y respuestas LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, plugins, AuthN/AuthZ RS256, DRP, ISO 9001/SOC 2, Dry-Run, GitHub CLI `gh`, BDD automatizado, Onboarding Cero Fricción, Autoconsumo Dogfooding, Integración GitHub API & Odoo.sh).
+3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, plugins, AuthN/AuthZ RS256, DRP, ISO 9001/SOC 2, Dry-Run, GitHub CLI `gh`, BDD automatizado, Onboarding Cero Fricción, Autoconsumo Dogfooding, Integración GitHub API/Odoo.sh y SAP Enterprise/B1).
 
 ---
 
@@ -51,7 +51,8 @@ specs/
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
 │   ├── 03_social_marketing_spec.md     # Pod Odoo Social Marketing
 │   ├── 04_scm_logistics_spec.md        # Pod Cadena de Suministros (WMS/MRP/Compras)
-│   └── 05_github_devops_odoo_sh_spec.md # Pod GitHub API & Odoo.sh DevOps Integrator
+│   ├── 05_github_devops_odoo_sh_spec.md # Pod GitHub API & Odoo.sh DevOps Integrator
+│   └── 06_sap_enterprise_and_b1_spec.md # Pod SAP Enterprise (S/4HANA/ECC) & Business One
 └── api/                                # Contrato OpenAPI / HTTP / WebSocket
     └── openapi_spec.yaml               # Especificación OpenAPI 3.0
 ```
@@ -89,3 +90,4 @@ specs/
 | **Pods** | Pod Social Marketing | [`specs/pods/03_social_marketing_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/03_social_marketing_spec.md) |
 | **Pods** | Pod Cadena Suministros | [`specs/pods/04_scm_logistics_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/04_scm_logistics_spec.md) |
 | **Pods** | Pod GitHub API & Odoo.sh | [`specs/pods/05_github_devops_odoo_sh_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/05_github_devops_odoo_sh_spec.md) |
+| **Pods** | Pod SAP Enterprise & B1 | [`specs/pods/06_sap_enterprise_and_b1_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/06_sap_enterprise_and_b1_spec.md) |

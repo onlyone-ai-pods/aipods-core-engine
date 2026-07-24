@@ -39,12 +39,15 @@ Plataforma SaaS basada en arquitectura RAG (Retrieval-Augmented Generation) dise
 ### 👑 ÉPICA 11: AI Pod por Defecto - GitHub API & Odoo.sh DevOps Integrator
 *Automatización de creación de repositorios en GitHub del cliente, gestión de PRs y vinculación de despliegues en la plataforma PaaS Odoo.sh.*
 
-* **HU 11.1 - Creación Automática de Repositorios GitHub:**
-  > **Como** desarrollador o consultor,  
-  > **quiero** solicitar al AI Pod la creación de un nuevo repositorio de módulo en GitHub,  
-  > **para** obtener la estructura de código `__manifest__.py` y vinculación automatizada.
+### 👑 ÉPICA 12: AI Pod - SAP Enterprise (S/4HANA/ECC) & SAP Business One Integrator
+*Integración avanzada de lectura y ejecución con entornos SAP consumiendo SAP Gateway (OData), SOAP Web Services, PyRFC / BAPIs y Service Layer en SAP Business One.*
 
-* **HU 11.2 - Despliegues en Odoo.sh:**
-  > **Como** responsable de proyectos Odoo,  
-  > **quiero** vincular ramas de código con entornos de Staging o Producción en Odoo.sh,  
-  > **para** desplegar características probadas sin salir de la interfaz de chat.
+* **HU 12.1 - Consultas OData RESTful en SAP S/4HANA:**
+  > **Como** consultor SAP o desarrollador,  
+  > **quiero** consultar entidades de socios de negocios o documentos en SAP Gateway mediante OData,  
+  > **para** obtener respuestas rápidas con formato JSON/REST.
+
+* **HU 12.2 - Ejecución de BAPIs en SAP ECC via PyRFC:**
+  > **Como** administrador de infraestructura SAP,  
+  > **quiero** invocar BAPIs nativas mediante PyRFC con simulación Dry-Run,  
+  > **para** integrar procesos legacy de SAP R/3 o ECC con la plataforma AI Pods.
