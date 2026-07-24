@@ -4,7 +4,7 @@ Este repositorio contiene la documentación del proyecto y la suite completa de 
 
 ## 📄 Estructura de Documentación
 
-* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`4.0.0`).
+* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`4.1.0`).
 * **[`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE):** Licencia Propietaria del Autor (Martin Llanos).
 * **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 10 Épicas e Historias de Usuario consolidadas.
 * **[`docs/SDD.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD.md):** Documento de Diseño de Software (Arquitectura Enterprise en Go, PostgreSQL 16 Enterprise, Qdrant Cluster, Redis Active-Active, NATS JetStream, Portales Aislados, OAuth2/OIDC, OpenTelemetry, DRP RPO<1min, FinOps y Cumplimiento ISO 9001, SOC 2 Type II & ISO 27001).
