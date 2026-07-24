@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables para validar tanto código como respuestas de los modelos LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit, Red-Teaming, Sandbox de Clientes, Justificaciones & Límites, Protocolo Mandatorio Dry-Run, Gobernanza Adaptativa de Políticas, Cumplimiento ISO 9001 & SOC 2, Mejora Continua, Rebanadas Verticales, Gobernanza con GitHub CLI `gh` & Spec PRs).
+3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit, Red-Teaming, Sandbox de Clientes, Justificaciones & Límites, Protocolo Mandatorio Dry-Run, Gobernanza Adaptativa de Políticas, Cumplimiento ISO 9001 & SOC 2, Mejora Continua, Rebanadas Verticales, GitHub CLI `gh`, Pruebas BDD Nativas en Go con `godog` & Evaluaciones Diferenciadas).
 
 ---
 
@@ -39,7 +39,8 @@ specs/
 │   ├── 16_iso9001_soc2_iso27001_compliance_spec.md # Marco de Cumplimiento ISO 9001, SOC 2 Type II & ISO 27001
 │   ├── 17_continuous_improvement_and_user_feedback_spec.md # Mejora Continua por Feedback de Usuario & RLHF Loop
 │   ├── 18_incremental_execution_roadmap_and_vertical_slicing_spec.md # Roadmap Incremental & Rebanadas Verticales
-│   └── 19_github_cli_and_spec_pr_governance_spec.md # Gobernanza gh CLI, Spec PR Gate & Pods Internos vs Externos
+│   ├── 19_github_cli_and_spec_pr_governance_spec.md # Gobernanza gh CLI, Spec PR Gate & Pods Internos vs Externos
+│   └── 20_bdd_test_automation_and_tiered_evals_spec.md # Tests BDD godog en Go & Evaluaciones Diferenciadas
 ├── pods/                               # Especificaciones de AI Pods por Dominio
 │   ├── 01_afip_finance_spec.md         # Pod AFIP / ARCA & Balances Financieros
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
@@ -79,3 +80,4 @@ specs/
 | **Mejora Continua & Feedback Loop**| ISO 9001 QMS & RLHF | [`specs/core/17_continuous_improvement_and_user_feedback_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/17_continuous_improvement_and_user_feedback_spec.md) |
 | **Vertical Slicing & Incremental Roadmap**| Estrategia de Ejecución | [`specs/core/18_incremental_execution_roadmap_and_vertical_slicing_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/18_incremental_execution_roadmap_and_vertical_slicing_spec.md) |
 | **GitHub CLI & Spec PR Gate**| Gobernanza Dual & CI/CD | [`specs/core/19_github_cli_and_spec_pr_governance_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/19_github_cli_and_spec_pr_governance_spec.md) |
+| **Tests BDD en Go & Evaluaciones Tiered**| BDD Automation & Sandbox | [`specs/core/20_bdd_test_automation_and_tiered_evals_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/20_bdd_test_automation_and_tiered_evals_spec.md) |
