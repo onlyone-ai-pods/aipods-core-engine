@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables para validar tanto código como respuestas de los modelos LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit, Red-Teaming, Sandbox de Clientes, Justificaciones & Límites).
+3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps, Clean Code, Agentic Skills Kit, Red-Teaming, Sandbox de Clientes, Justificaciones & Límites, Protocolo Mandatorio Dry-Run).
 
 ---
 
@@ -33,7 +33,8 @@ specs/
 │   ├── 10_internal_core_agentic_skills_spec.md # Agentic Skills Internos para el Equipo Core (.aipods/skills/)
 │   ├── 11_product_roadmap_and_marketplace_spec.md # Red-Teaming, Monetización SaaS & Marketplace de Pods
 │   ├── 12_customer_portal_marketing_and_sandbox_spec.md # Landing Pública, Sandbox Interactivo & Customer Dashboard
-│   └── 13_business_justifications_capabilities_and_limitations_spec.md # ROI, Prestaciones Avanzadas y Límites
+│   ├── 13_business_justifications_capabilities_and_limitations_spec.md # ROI, Prestaciones Avanzadas y Límites
+│   └── 14_dry_run_execution_protocol_spec.md # Protocolo Mandatorio Dry-Run & Aprobación Humana
 ├── pods/                               # Especificaciones de AI Pods por Dominio
 │   ├── 01_afip_finance_spec.md         # Pod AFIP / ARCA & Balances Financieros
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
@@ -67,3 +68,4 @@ specs/
 | **Roadmap, Red-Teaming & Marketplace**| Estrategia de Producto | [`specs/core/11_product_roadmap_and_marketplace_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/11_product_roadmap_and_marketplace_spec.md) |
 | **Landing, Sandbox & Dashboard**| Portal Clientes & Growth | [`specs/core/12_customer_portal_marketing_and_sandbox_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/12_customer_portal_marketing_and_sandbox_spec.md) |
 | **Justificaciones & Límites**| ROI, Prestaciones & Límites | [`specs/core/13_business_justifications_capabilities_and_limitations_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/13_business_justifications_capabilities_and_limitations_spec.md) |
+| **Protocolo Mandatorio Dry-Run**| Seguridad Operacional | [`specs/core/14_dry_run_execution_protocol_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/14_dry_run_execution_protocol_spec.md) |
