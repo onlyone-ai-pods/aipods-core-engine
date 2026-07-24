@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables para validar tanto código como respuestas de los modelos LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictas (ej. no filtración entre tenants, umbrales de caché, citas obligatorias RAG, arquitectura de plugins, gobernanza de releases).
+3. **Restricciones de Seguridad e Invariantes:** Reglas estrictas (ej. no filtración entre tenants, umbrales de caché, citas obligatorias RAG, arquitectura de plugins, gobernanza de releases, AuthN/AuthZ, DRP, FinOps).
 
 ---
 
@@ -26,7 +26,8 @@ specs/
 │   ├── 03_multi_tenant_spec.md         # Aislamiento por Metadatos & Seguridad
 │   ├── 04_semantic_cache_spec.md       # Caché Semántico y Colas Asíncronas
 │   ├── 05_plugin_architecture_spec.md  # Arquitectura de Plugins & Extensibilidad AI Pods
-│   └── 06_lifecycle_and_governance_spec.md # Ciclo de Vida, Gobernanza & Rollback Automático
+│   ├── 06_lifecycle_and_governance_spec.md # Ciclo de Vida, Gobernanza & Rollback Automático
+│   └── 07_enterprise_architecture_parameters_spec.md # AuthN/AuthZ, DRP, OpenTelemetry, FinOps & DevOps
 ├── pods/                               # Especificaciones de AI Pods por Dominio
 │   ├── 01_afip_finance_spec.md         # Pod AFIP / ARCA & Balances Financieros
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
@@ -53,3 +54,4 @@ specs/
 | **Épica 10** | HU 10.1 | [`specs/core/02_rag_pipeline_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/02_rag_pipeline_spec.md) |
 | **Extensibilidad & Plugins**| Requisito Arquitectura | [`specs/core/05_plugin_architecture_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/05_plugin_architecture_spec.md) |
 | **Gobernanza & Lifecycle** | Requisito Plataforma | [`specs/core/06_lifecycle_and_governance_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/06_lifecycle_and_governance_spec.md) |
+| **Parámetros Empresariales**| Seguridad/Ops/FinOps | [`specs/core/07_enterprise_architecture_parameters_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/core/07_enterprise_architecture_parameters_spec.md) |
