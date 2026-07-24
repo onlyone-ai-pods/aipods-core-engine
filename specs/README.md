@@ -1,7 +1,7 @@
 # 🛠️ Spec-Driven Development (SDD) Framework
 ## Proyecto AI Pods para Consultoría Odoo (SaaS)
 
-Este directorio contiene las **21 especificaciones formales ejecutables** organizadas en 4 Dominios de Arquitectura que dirigen el desarrollo, las pruebas BDD y la gobernanza de la plataforma.
+Este directorio contiene las **22 especificaciones formales ejecutables** organizadas en 4 Dominios de Arquitectura que dirigen el desarrollo, las pruebas BDD y la gobernanza de la plataforma.
 
 ---
 
@@ -11,7 +11,7 @@ En este proyecto, las **Especificaciones (Specs)** preceden a la implementación
 
 1. **Contrato de Interfaz y Datos (Schemas):** Entradas, salidas, eventos y payload JSON esperados.
 2. **Escenarios de Comportamiento (BDD / Given-When-Then):** Casos de prueba funcionales ejecutables en Go (`godog`) para validar código y respuestas LLM.
-3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, plugins, AuthN/AuthZ RS256, DRP, ISO 9001/SOC 2, Dry-Run, GitHub CLI `gh`, BDD automatizado, Onboarding Cero Fricción).
+3. **Restricciones de Seguridad e Invariantes:** Reglas estrictamente enforzadas (aislamiento tenant_id, caché semántico, plugins, AuthN/AuthZ RS256, DRP, ISO 9001/SOC 2, Dry-Run, GitHub CLI `gh`, BDD automatizado, Onboarding Cero Fricción, Autoconsumo Dogfooding para CRM y Facturación).
 
 ---
 
@@ -44,7 +44,8 @@ specs/
 │   ├── 12_customer_portal_marketing_and_sandbox_spec.md # Landing & Interactive Sandbox
 │   ├── 13_business_justifications_capabilities_and_limitations_spec.md # ROI & Limits
 │   ├── 17_continuous_improvement_and_user_feedback_spec.md # Feedback Loop 👍/👎
-│   └── 21_customer_onboarding_and_provisioning_spec.md # Protocolo Onboarding & Provisioning
+│   ├── 21_customer_onboarding_and_provisioning_spec.md # Protocolo Onboarding & Provisioning
+│   └── 22_self_consuming_dogfooding_crm_and_billing_spec.md # Autoconsumo CRM, Facturación & Billing
 ├── pods/                               # Especificaciones de AI Pods por Dominio
 │   ├── 01_afip_finance_spec.md         # Pod AFIP / ARCA & Balances Financieros
 │   ├── 02_evocrm_helpdesk_spec.md      # Pod EvoCRM & Odoo Helpdesk
@@ -81,6 +82,7 @@ specs/
 | **04 Portal** | Business ROI & Limits | [`specs/04_customer_portal_growth/13_business_justifications_capabilities_and_limitations_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/04_customer_portal_growth/13_business_justifications_capabilities_and_limitations_spec.md) |
 | **04 Portal** | Feedback Loop 👍/👎 | [`specs/04_customer_portal_growth/17_continuous_improvement_and_user_feedback_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/04_customer_portal_growth/17_continuous_improvement_and_user_feedback_spec.md) |
 | **04 Portal** | Onboarding & Provisioning | [`specs/04_customer_portal_growth/21_customer_onboarding_and_provisioning_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/04_customer_portal_growth/21_customer_onboarding_and_provisioning_spec.md) |
+| **04 Portal** | Autoconsumo Dogfooding | [`specs/04_customer_portal_growth/22_self_consuming_dogfooding_crm_and_billing_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/04_customer_portal_growth/22_self_consuming_dogfooding_crm_and_billing_spec.md) |
 | **Pods** | Pod AFIP / ARCA | [`specs/pods/01_afip_finance_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/01_afip_finance_spec.md) |
 | **Pods** | Pod EvoCRM / Helpdesk | [`specs/pods/02_evocrm_helpdesk_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/02_evocrm_helpdesk_spec.md) |
 | **Pods** | Pod Social Marketing | [`specs/pods/03_social_marketing_spec.md`](file:///home/martin/server/onlyone%20ai%20pods/specs/pods/03_social_marketing_spec.md) |
