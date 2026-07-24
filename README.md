@@ -1,37 +1,34 @@
-# 🚀 AI Pods Enterprise (SaaS) - Documentación & Especificaciones
+# ⚙️ AI Pods Enterprise (SaaS) - Backend Engine (`aipods-core-engine`)
 
-Este repositorio contiene la documentación del proyecto y la suite completa de especificaciones ejecutables de **AI Pods Enterprise**, la plataforma SaaS de **"Servicio como Software" (Service-as-Software)** universal, multi-tenant y agnóstica para la creación, ejecución y orquestación de agentes inteligentes (**AI Pods**) conectables a cualquier ERP (Odoo, SAP S/4HANA, SAP ECC, SAP Business One, Salesforce), CRM (EvoCRM), APIs, bases de datos o portales web.
+Este repositorio contiene el motor backend en **Golang 1.22+**, microservicios de orquestación, Smart Router, evaluador multi-tenant y la pila de desarrollo local de **AI Pods Enterprise SaaS Platform**.
 
-## 📄 Estructura de Documentación
+## 🛠️ Tecnologías del Backend
 
-* **[`VERSION`](file:///home/martin/server/onlyone%20ai%20pods/VERSION):** Versión actual de la plataforma (`5.0.0`).
-* **[`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE):** Licencia Propietaria del Autor (Martin Llanos).
-* **[`.aipods/skills/`](file:///home/martin/server/onlyone%20ai%20pods/.aipods/skills/):** Kit Físico de Agentic Skills (`core-go-architect`, `multi-tenant-security`, `frontend-ui-architect`, `sdd-spec-writer`) y reglas Git (`github_workflow.md`).
-* **[`docs/BACKLOG.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/BACKLOG.md):** Backlog del producto con 12 Épicas e Historias de Usuario consolidadas.
-* **[`docs/SDD.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD.md):** Documento de Diseño de Software (Arquitectura Enterprise en Go, PostgreSQL 16 Enterprise, Qdrant Cluster, Redis Active-Active, NATS JetStream, Portales Aislados, OAuth2/OIDC, OpenTelemetry, DRP RPO<1min, FinOps y Cumplimiento ISO 9001, SOC 2 Type II & ISO 27001).
-* **[`docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/DEVELOPMENT_ONBOARDING_CHECKLIST.md):** Guía Completa de Onboarding, Arquitectura Multi-Repositorio (`onlyone-ai-pods`), Flujo `gh` CLI y Estándar de Ramas.
-* **[`docs/SDD_ENGINEERING_FEEDBACK.md`](file:///home/martin/server/onlyone%20ai%20pods/docs/SDD_ENGINEERING_FEEDBACK.md):** Informe de Devolución de Ingeniería SDD.
-* **[`specs/`](file:///home/martin/server/onlyone%20ai%20pods/specs/README.md):** Suite Completa de 24 Especificaciones SDD organizada en **4 Dominios Temáticos** (`01_architecture_core/`, `02_security_and_compliance/`, `03_plugin_and_skills/`, `04_customer_portal_growth/`, `pods/` y `api/`).
-* **[`cmd/server/main.go`](file:///home/martin/server/onlyone%20ai%20pods/cmd/server/main.go):** Backend en Go 1.22+ compilado con endpoints `/healthz` y `/api/v1/chat/completions` integrados con `tenant`, `router`, y `pod/afip`.
+* **Golang 1.22+:** Runtime principal y servidor HTTP Gin.
+* **Smart Router:** Clasificador de intenciones entre AI Pods.
+* **Aislamiento Multi-Tenant:** Inyección de `tenant_id` obligatorio en contexto de Go.
+* **PostgreSQL 16 Enterprise:** Base de datos relacional y particionada por tenant.
+* **Qdrant Vector DB:** Motor de búsqueda de embeddings RAG.
+* **Redis Active-Active & NATS JetStream:** Caché semántico y bus de eventos asíncronos.
+
+---
+
+## 💻 Guía de Desarrollo Local
+
+```bash
+# 1. Levantar la pila de infraestructura local con Docker
+docker compose -f docker-compose.dev.yml up -d
+
+# 2. Descargar dependencias y ejecutar pruebas BDD
+go mod tidy
+go test -v ./...
+
+# 3. Compilar y ejecutar el servidor en Go
+go run cmd/server/main.go
+```
 
 ---
 
 ## 🔒 Licencia
 
-Este proyecto y su documentación están protegidos bajo una **Licencia Propietaria del Autor**. Todos los derechos reservados © 2026 Martin Llanos. Ver el archivo [`LICENSE`](file:///home/martin/server/onlyone%20ai%20pods/LICENSE) para más detalles.
-
----
-
-## 📌 Estándar de Commits (Odoo Commit Standard)
-
-Todos los commits de este repositorio siguen el estándar de contribución de la industria (**Odoo Commit Format**):
-
-```text
-[TAG] module: short summary in present imperative
-
-Detailed explanation of changes...
-```
-
-* `[ADD]`: Agregado de especificaciones, documentación o características.
-* `[IMP]`: Mejoras en documentos o esquemas existentes.
-* `[REF]`: Reestructuración de especificaciones.
+Todos los derechos reservados © 2026 Martin Llanos. Licencia Propietaria.
