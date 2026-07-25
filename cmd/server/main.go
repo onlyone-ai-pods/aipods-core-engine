@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/martinllanos/only-ai-pods/internal/router"
+	"github.com/martinllanos/only-ai-pods/internal/sandbox"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
 
@@ -16,19 +17,71 @@ type ChatRequest struct {
 	DryRun   *bool  `json:"dry_run,omitempty"`
 }
 
+type SandboxSessionRequest struct {
+	FileName string `json:"file_name"`
+}
+
+type SandboxQueryRequest struct {
+	SessionID string `json:"session_id" binding:"required"`
+	Message   string `json:"message" binding:"required"`
+}
+
 func main() {
 	r := gin.Default()
 	smartRouter := router.NewSmartRouter()
+	sandboxManager := sandbox.NewSessionManager(smartRouter)
 
 	// Healthcheck Endpoint
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "4.1.0",
+			"version": "5.8.0",
 		})
 	})
 
-	// Sprint 1 MVP: Chat Endpoint matching specs/01_architecture_core/01_smart_router_spec.md
+	// Sandbox Endpoint: Create Ephemeral Session ("Upload PDF & Test")
+	r.POST("/api/v1/sandbox/sessions", func(c *gin.Context) {
+		var req SandboxSessionRequest
+		_ = c.ShouldBindJSON(&req)
+
+		fileName := req.FileName
+		if fileName == "" {
+			fileName = "documento_prueba.pdf"
+		}
+
+		session := sandboxManager.CreateEphemeralSession(fileName)
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "CREATED",
+			"session": session,
+			"message": "Ephemeral Sandbox session initialized. You have 3 free test queries.",
+		})
+	})
+
+	// Sandbox Endpoint: Execute Free Test Query (Limit: 3 queries)
+	r.POST("/api/v1/sandbox/query", func(c *gin.Context) {
+		var req SandboxQueryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		res, session, err := sandboxManager.ExecuteSandboxQuery(c.Request.Context(), req.SessionID, req.Message)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":        err.Error(),
+				"session":      session,
+				"conversion":   "Crea tu cuenta gratis en 1 clic para guardar este AI Pod permanentemente",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"response": res,
+			"session":  session,
+		})
+	})
+
+	// Main Chat Completions Endpoint
 	r.POST("/api/v1/chat/completions", func(c *gin.Context) {
 		var req ChatRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -59,7 +112,7 @@ func main() {
 		port = "8080"
 	}
 
-	fmt.Printf("🚀 AI Pods Engine Server running on port %s\n", port)
+	fmt.Printf("🚀 AI Pods Engine Core Server running on port %s\n", port)
 	if err := r.Run(":" + port); err != nil {
 		fmt.Printf("Server failed: %v\n", err)
 	}
