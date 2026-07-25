@@ -2,8 +2,10 @@ package afip
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -37,6 +39,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		}
 
 		if dryRun {
+			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "generar_csr_afip",
@@ -44,7 +47,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 				AffectedRecordsCount:  1,
 				GeneratedCommand:      generatedCmd,
 				RequiresHumanApproval: true,
-				ApprovalToken:         "dryrun_tok_afip_8899a",
+				ApprovalToken:         dynamicApprovalID,
 			}
 		}
 	} else {
