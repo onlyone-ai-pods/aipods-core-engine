@@ -14,7 +14,9 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/pod/afip"
 	"github.com/martinllanos/only-ai-pods/internal/pod/billing"
 	"github.com/martinllanos/only-ai-pods/internal/pod/evocrm"
+	"github.com/martinllanos/only-ai-pods/internal/pod/gdrive"
 	githubdevops "github.com/martinllanos/only-ai-pods/internal/pod/github_devops"
+	"github.com/martinllanos/only-ai-pods/internal/pod/multimedia"
 	"github.com/martinllanos/only-ai-pods/internal/pod/sap"
 	"github.com/martinllanos/only-ai-pods/internal/pod/scm"
 	securitypod "github.com/martinllanos/only-ai-pods/internal/pod/security"
@@ -101,11 +103,13 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 	r.RegisterStaticPod(billing.NewCoreBillingPod())
 	r.RegisterStaticPod(securitypod.NewCoreSecurityAuditPod())
 
-	// Register Optional Domain Pods
+	// Register Domain & Multimodal Pods
 	r.RegisterStaticPod(githubdevops.NewGitHubDevOpsPod())
 	r.RegisterStaticPod(sap.NewSAPPod())
 	r.RegisterStaticPod(evocrm.NewEvoCRMPod())
 	r.RegisterStaticPod(scm.NewSCMPod())
+	r.RegisterStaticPod(multimedia.NewMultimediaWhisperPod())
+	r.RegisterStaticPod(gdrive.NewGDriveSyncPod())
 
 	return r
 }
@@ -144,7 +148,11 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	}
 
 	// 2. Check Static Compiled Core Pods
-	if strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "saldo") || strings.Contains(lowerQuery, "estado de cuenta") {
+	if strings.Contains(lowerQuery, "audio") || strings.Contains(lowerQuery, "video") || strings.Contains(lowerQuery, "transcribir") || strings.Contains(lowerQuery, "mp3") || strings.Contains(lowerQuery, "mp4") {
+		return r.staticPods["POD_MULTIMEDIA_WHISPER"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "gdrive") || strings.Contains(lowerQuery, "google drive") || strings.Contains(lowerQuery, "gdoc") {
+		return r.staticPods["POD_GDRIVE_SYNC"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "saldo") || strings.Contains(lowerQuery, "estado de cuenta") {
 		return r.staticPods["POD_CORE_BILLING_ODOO"].ProcessQuery(ctx, tenantID, query, dryRun)
 	} else if strings.Contains(lowerQuery, "auditoria") || strings.Contains(lowerQuery, "soc2") || strings.Contains(lowerQuery, "seguridad") {
 		return r.staticPods["POD_CORE_SECURITY_AUDIT"].ProcessQuery(ctx, tenantID, query, dryRun)
