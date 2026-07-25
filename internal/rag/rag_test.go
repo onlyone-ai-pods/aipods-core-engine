@@ -10,17 +10,24 @@ import (
 )
 
 func TestRAGPipelineAndSemanticCache(t *testing.T) {
-	// 1. Test PDF Ingestion Chunking
+	// 1. Test PDF Ingestion Chunking with Security Gate (%PDF- header)
 	ingestor := NewPDFIngestor(10, 2)
 	ctx := context.Background()
-	sampleText := "AFIP ARCA es el organismo recaudador fiscal en Argentina. Para solicitar un certificado digital se requiere generar una clave privada RSA y un archivo de solicitud CSR mediante OpenSSL. Este proceso garantiza la firma digital inmutable de comprobantes electronicos."
+	samplePDF := []byte("%PDF-1.7\nAFIP ARCA es el organismo recaudador fiscal en Argentina. Para solicitar un certificado digital se requiere generar una clave privada RSA y un archivo de solicitud CSR mediante OpenSSL. Este proceso garantiza la firma digital inmutable de comprobantes electronicos.")
 
-	chunks, err := ingestor.IngestPDFText(ctx, "tenant_acme", "Normativa_AFIP_2026.pdf", sampleText)
+	chunks, err := ingestor.IngestPDFText(ctx, "tenant_acme", "Normativa_AFIP_2026.pdf", samplePDF)
 	if err != nil || len(chunks) == 0 {
 		t.Fatalf("PDF Ingestion failed: %v", err)
 	}
 	if chunks[0].TenantID != "tenant_acme" {
 		t.Errorf("Expected TenantID tenant_acme, got %s", chunks[0].TenantID)
+	}
+
+	// Test Rejected Malicious PDF (/JavaScript object)
+	maliciousPDF := []byte("%PDF-1.7\n/JavaScript (alert('hacked'));")
+	_, errMalicious := ingestor.IngestPDFText(ctx, "tenant_acme", "malicioso.pdf", maliciousPDF)
+	if errMalicious == nil {
+		t.Errorf("Expected security gate to reject malicious /JavaScript PDF")
 	}
 
 	// 2. Test Vector Store & Tenant Isolation Filter

@@ -1,20 +1,25 @@
 ---
 name: frontend-ui-architect
-description: Guía experta de diseño de interfaz (UI/UX), Vanilla CSS y React 18 para portales web de AI Pods Enterprise.
+description: Guía experta de desarrollo web moderno en React 18, Vite y Vanilla CSS para AI Pods Enterprise.
 ---
 
-# 🎨 Skill: Frontend UI/UX Architect
+# 🎨 Skill: Frontend UI Architect
 
-Esta habilidad instruye a asistentes de IA para desarrollar los portales web `aipods-frontend-customer` y `aipods-frontend-admin` en **React 18 / Vite**:
+Esta habilidad instruye a asistentes de IA para desarrollar aplicaciones web en **React 18 / Vite** en `aipods-frontend-customer` y `aipods-frontend-admin`:
 
-## Reglas de Diseño e Interfaz
+## 1. Trazabilidad Estricta con Especificaciones SDD
+Antes de crear o editar componentes React, consultar las especificaciones en `specs/04_customer_portal_growth/`. Garantizar el cumplimiento del paradigma "Servicio como Software", Sandbox interactivo y modales SSO.
 
-1. **Aestética Premium y Modernidad Visual:**
-   - Diseños que deslumbran a primera vista con modos oscuros sleek, degradados suaves, glassmorphism y tipografía moderna de Google Fonts (Inter, Roboto, Outfit).
-   - Utilizar Vanilla CSS con variables HSL personalizadas para máximo control y flexibilidad. Evitar TailwindCSS innecesario.
+## 2. Gate Mandatorio de Auditoría NPM & Seguridad (Post-Code Quality Gate)
+Antes de finalizar cualquier tarea de código en React, el asistente DEBE ejecutar automáticamente:
+```bash
+npm audit
+npx eslint "src/**/*.{js,jsx}"
+npm run build
+```
+Si `npm audit` reporta vulnerabilidades en paquetes, ejecutar la remediación y asegurar `found 0 vulnerabilities`.
 
-2. **Sandbox Interactivo y Dashboard:**
-   - La interfaz del cliente debe ser fluida, responsiva y ofrecer una experiencia interactiva sin login para probar AI Pods en tiempo real ("Sube tu PDF y prueba").
-
-3. **Buenas Prácticas de SEO y Accesibilidad:**
-   - Titulos descriptivos, meta-descripciones, HTML5 semántico (`<header>`, `<main>`, `<article>`), IDs únicos para pruebas e interacciones sin lag.
+## 3. Principios de Diseño Visual
+- **Aesthetic First:** Usar tokens de color HSL tailoreados, glassmorphism (`backdrop-filter: blur(12px)`), tipografía Inter y micro-animaciones en hover.
+- **Vanilla CSS Puro:** Utilizar archivos `.css` estructurados, evitando ad-hoc utilities frágiles.
+- **Sanitización & Clean Code:** Evitar `dangerouslySetInnerHTML` o patrones vulnerables a XSS.

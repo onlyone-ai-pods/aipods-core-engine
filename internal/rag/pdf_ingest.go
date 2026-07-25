@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/martinllanos/only-ai-pods/internal/security"
 )
 
 type DocumentChunk struct {
@@ -23,6 +24,7 @@ type DocumentChunk struct {
 type PDFIngestor struct {
 	chunkSize    int
 	chunkOverlap int
+	sanitizer    *security.FileSanitizer
 }
 
 func NewPDFIngestor(chunkSize, chunkOverlap int) *PDFIngestor {
@@ -35,14 +37,24 @@ func NewPDFIngestor(chunkSize, chunkOverlap int) *PDFIngestor {
 	return &PDFIngestor{
 		chunkSize:    chunkSize,
 		chunkOverlap: chunkOverlap,
+		sanitizer:    security.NewFileSanitizer(),
 	}
 }
 
-// IngestPDFText splits document text into metadata-annotated overlapping chunks
-func (p *PDFIngestor) IngestPDFText(ctx context.Context, tenantID, fileName, fullText string) ([]DocumentChunk, error) {
-	words := strings.Fields(fullText)
+// IngestPDFText validates PDF magic bytes, sanitizes text anti-poisoning, and splits into chunks
+func (p *PDFIngestor) IngestPDFText(ctx context.Context, tenantID, fileName string, rawBytes []byte) ([]DocumentChunk, error) {
+	// 1. MANDATORY SECURITY GATE: Validate PDF Magic Bytes & Executable Objects (/JavaScript, /Launch)
+	if err := p.sanitizer.ValidatePDFMagicBytes(rawBytes); err != nil {
+		return nil, fmt.Errorf("security gate rejected file %s: %w", fileName, err)
+	}
+
+	// 2. MANDATORY SECURITY GATE: Anti-Prompt Injection & Zero-Width Sanitization
+	sanitizationRes := p.sanitizer.SanitizeTextContent(string(rawBytes))
+	cleanText := sanitizationRes.SanitizedContent
+
+	words := strings.Fields(cleanText)
 	if len(words) == 0 {
-		return nil, fmt.Errorf("empty text content in document %s", fileName)
+		return nil, fmt.Errorf("empty or unreadable text content in document %s", fileName)
 	}
 
 	var chunks []DocumentChunk
@@ -64,9 +76,10 @@ func (p *PDFIngestor) IngestPDFText(ctx context.Context, tenantID, fileName, ful
 			PageNumber: pageNumber,
 			Content:    chunkText,
 			Metadata: map[string]interface{}{
-				"source":    fileName,
-				"tenant_id": tenantID,
-				"word_cnt":  end - i,
+				"source":           fileName,
+				"tenant_id":        tenantID,
+				"word_cnt":         end - i,
+				"sanitized_threats": len(sanitizationRes.DetectedThreats),
 			},
 			CreatedAt: time.Now(),
 		})
