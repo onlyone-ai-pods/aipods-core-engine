@@ -6,6 +6,7 @@ import (
 
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 	"github.com/martinllanos/only-ai-pods/internal/pod/afip"
+	githubdevops "github.com/martinllanos/only-ai-pods/internal/pod/github_devops"
 )
 
 type SmartRouter struct {
@@ -13,28 +14,32 @@ type SmartRouter struct {
 }
 
 func NewSmartRouter() *SmartRouter {
-	afipPod := afip.NewAFIPPod()
-	return &SmartRouter{
-		pods: map[string]pod.BaseAIPod{
-			afipPod.ID(): afipPod,
-		},
+	router := &SmartRouter{
+		pods: make(map[string]pod.BaseAIPod),
 	}
+
+	// Register Default Pods
+	router.RegisterPod(afip.NewAFIPPod())
+	router.RegisterPod(githubdevops.NewGitHubDevOpsPod())
+
+	return router
 }
 
-func (r *SmartRouter) RouteAndExecute(ctx context.Context, tenantID string, query string, dryRun bool) (*pod.PodResponse, error) {
+func (r *SmartRouter) RegisterPod(p pod.BaseAIPod) {
+	r.pods[p.ID()] = p
+}
+
+func (r *SmartRouter) RouteAndExecute(ctx context.Context, tenantID, query string, dryRun bool) (*pod.PodResponse, error) {
 	lowerQuery := strings.ToLower(query)
 
-	// Default to AFIP Pod for Sprint 1 MVP
-	targetPodID := "POD_AFIP_FINANCE"
+	var targetPod pod.BaseAIPod
 
-	if strings.Contains(lowerQuery, "afip") || strings.Contains(lowerQuery, "csr") || strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "balance") {
-		targetPodID = "POD_AFIP_FINANCE"
+	if strings.Contains(lowerQuery, "github") || strings.Contains(lowerQuery, "odoo.sh") || strings.Contains(lowerQuery, "repo") || strings.Contains(lowerQuery, "despliegue") {
+		targetPod = r.pods["POD_GITHUB_DEVOPS"]
+	} else {
+		// Default to AFIP/Finance Pod
+		targetPod = r.pods["POD_AFIP_FINANCE"]
 	}
 
-	selectedPod, ok := r.pods[targetPodID]
-	if !ok {
-		selectedPod = r.pods["POD_AFIP_FINANCE"]
-	}
-
-	return selectedPod.ProcessQuery(ctx, tenantID, query, dryRun)
+	return targetPod.ProcessQuery(ctx, tenantID, query, dryRun)
 }
