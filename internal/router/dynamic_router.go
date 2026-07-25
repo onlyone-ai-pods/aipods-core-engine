@@ -12,10 +12,12 @@ import (
 
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 	"github.com/martinllanos/only-ai-pods/internal/pod/afip"
+	"github.com/martinllanos/only-ai-pods/internal/pod/billing"
 	"github.com/martinllanos/only-ai-pods/internal/pod/evocrm"
 	githubdevops "github.com/martinllanos/only-ai-pods/internal/pod/github_devops"
 	"github.com/martinllanos/only-ai-pods/internal/pod/sap"
 	"github.com/martinllanos/only-ai-pods/internal/pod/scm"
+	securitypod "github.com/martinllanos/only-ai-pods/internal/pod/security"
 )
 
 // DynamicPodConfig represents a Pod registered dynamically via Database / API
@@ -79,7 +81,7 @@ func (h *HTTPSidecarAdapter) ProcessQuery(ctx context.Context, tenantID string, 
 	return &podResp, nil
 }
 
-// DynamicSmartRouter manages both static compiled Pods and dynamically registered HTTP/DB Pods
+// DynamicSmartRouter manages both static compiled Core Pods and dynamically registered HTTP/DB Pods
 type DynamicSmartRouter struct {
 	mu           sync.RWMutex
 	staticPods   map[string]pod.BaseAIPod
@@ -94,8 +96,12 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 		httpAdapters: make(map[string]*HTTPSidecarAdapter),
 	}
 
-	// Register Core Static Pods
+	// Register Core Essential Static Pods
 	r.RegisterStaticPod(afip.NewAFIPPod())
+	r.RegisterStaticPod(billing.NewCoreBillingPod())
+	r.RegisterStaticPod(securitypod.NewCoreSecurityAuditPod())
+
+	// Register Optional Domain Pods
 	r.RegisterStaticPod(githubdevops.NewGitHubDevOpsPod())
 	r.RegisterStaticPod(sap.NewSAPPod())
 	r.RegisterStaticPod(evocrm.NewEvoCRMPod())
@@ -138,7 +144,11 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	}
 
 	// 2. Check Static Compiled Core Pods
-	if strings.Contains(lowerQuery, "scm") || strings.Contains(lowerQuery, "wms") || strings.Contains(lowerQuery, "mrp") || strings.Contains(lowerQuery, "bom") || strings.Contains(lowerQuery, "landed") || strings.Contains(lowerQuery, "flete") {
+	if strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "saldo") || strings.Contains(lowerQuery, "estado de cuenta") {
+		return r.staticPods["POD_CORE_BILLING_ODOO"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "auditoria") || strings.Contains(lowerQuery, "soc2") || strings.Contains(lowerQuery, "seguridad") {
+		return r.staticPods["POD_CORE_SECURITY_AUDIT"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "scm") || strings.Contains(lowerQuery, "wms") || strings.Contains(lowerQuery, "mrp") || strings.Contains(lowerQuery, "bom") || strings.Contains(lowerQuery, "landed") || strings.Contains(lowerQuery, "flete") {
 		return r.staticPods["POD_SCM_LOGISTICS"].ProcessQuery(ctx, tenantID, query, dryRun)
 	} else if strings.Contains(lowerQuery, "evocrm") || strings.Contains(lowerQuery, "helpdesk") || strings.Contains(lowerQuery, "whatsapp") || strings.Contains(lowerQuery, "ticket") {
 		return r.staticPods["POD_EVOCRM_HELPDESK"].ProcessQuery(ctx, tenantID, query, dryRun)
