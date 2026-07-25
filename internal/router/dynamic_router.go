@@ -12,6 +12,7 @@ import (
 
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 	"github.com/martinllanos/only-ai-pods/internal/pod/afip"
+	"github.com/martinllanos/only-ai-pods/internal/pod/evocrm"
 	githubdevops "github.com/martinllanos/only-ai-pods/internal/pod/github_devops"
 	"github.com/martinllanos/only-ai-pods/internal/pod/sap"
 )
@@ -60,7 +61,6 @@ func (h *HTTPSidecarAdapter) ProcessQuery(ctx context.Context, tenantID string, 
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		// Fallback response for demonstration if sidecar endpoint is offline
 		return &pod.PodResponse{
 			PodID:     h.config.PodID,
 			Answer:    fmt.Sprintf("AI Pod Dinámico (%s): Respuesta procesada en microservicio externo (%s).", h.config.Name, h.config.EndpointURL),
@@ -97,6 +97,7 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 	r.RegisterStaticPod(afip.NewAFIPPod())
 	r.RegisterStaticPod(githubdevops.NewGitHubDevOpsPod())
 	r.RegisterStaticPod(sap.NewSAPPod())
+	r.RegisterStaticPod(evocrm.NewEvoCRMPod())
 
 	return r
 }
@@ -135,7 +136,9 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	}
 
 	// 2. Check Static Compiled Core Pods
-	if strings.Contains(lowerQuery, "sap") || strings.Contains(lowerQuery, "s4hana") || strings.Contains(lowerQuery, "odata") || strings.Contains(lowerQuery, "b1") {
+	if strings.Contains(lowerQuery, "evocrm") || strings.Contains(lowerQuery, "helpdesk") || strings.Contains(lowerQuery, "whatsapp") || strings.Contains(lowerQuery, "ticket") {
+		return r.staticPods["POD_EVOCRM_HELPDESK"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "sap") || strings.Contains(lowerQuery, "s4hana") || strings.Contains(lowerQuery, "odata") || strings.Contains(lowerQuery, "b1") {
 		return r.staticPods["POD_SAP_ENTERPRISE"].ProcessQuery(ctx, tenantID, query, dryRun)
 	} else if strings.Contains(lowerQuery, "github") || strings.Contains(lowerQuery, "odoo.sh") || strings.Contains(lowerQuery, "repo") || strings.Contains(lowerQuery, "despliegue") {
 		return r.staticPods["POD_GITHUB_DEVOPS"].ProcessQuery(ctx, tenantID, query, dryRun)
