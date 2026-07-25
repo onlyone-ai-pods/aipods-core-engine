@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  # Servidor Backend Go (Compilado con Dockerfile Multietapa)
+  api_engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aipods_api_engine
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgres://aipods_user:aipods_password@postgres:5432/aipods_db?sslmode=disable
+      - QDRANT_HOST=qdrant:6333
+      - REDIS_URL=redis:6379
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Base de Datos Relacional Multi-Tenant (PostgreSQL 16 Alpine Ligero)
   postgres:
     image: postgres:16-alpine
     container_name: aipods_postgres
@@ -10,31 +32,30 @@ services:
       POSTGRES_PASSWORD: aipods_password
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aipods_user -d aipods_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
+  # Base de Datos Vectorial RAG (Qdrant Ultraligero)
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.8.4
     container_name: aipods_qdrant
     ports:
       - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
 
+  # Caché Semántico y Rate Limiting (Redis 7 Alpine)
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
     container_name: aipods_redis
     ports:
       - "6379:6379"
 
+  # Bus de Eventos Asíncronos (NATS JetStream Alpine)
   nats:
     image: nats:2.10-alpine
     container_name: aipods_nats
+    command: ["-js"]
     ports:
       - "4222:4222"
-      - "8222:8222"
-
-volumes:
-  postgres_data:
-  qdrant_data:
