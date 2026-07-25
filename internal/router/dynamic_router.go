@@ -15,6 +15,7 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/pod/evocrm"
 	githubdevops "github.com/martinllanos/only-ai-pods/internal/pod/github_devops"
 	"github.com/martinllanos/only-ai-pods/internal/pod/sap"
+	"github.com/martinllanos/only-ai-pods/internal/pod/scm"
 )
 
 // DynamicPodConfig represents a Pod registered dynamically via Database / API
@@ -98,6 +99,7 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 	r.RegisterStaticPod(githubdevops.NewGitHubDevOpsPod())
 	r.RegisterStaticPod(sap.NewSAPPod())
 	r.RegisterStaticPod(evocrm.NewEvoCRMPod())
+	r.RegisterStaticPod(scm.NewSCMPod())
 
 	return r
 }
@@ -136,7 +138,9 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	}
 
 	// 2. Check Static Compiled Core Pods
-	if strings.Contains(lowerQuery, "evocrm") || strings.Contains(lowerQuery, "helpdesk") || strings.Contains(lowerQuery, "whatsapp") || strings.Contains(lowerQuery, "ticket") {
+	if strings.Contains(lowerQuery, "scm") || strings.Contains(lowerQuery, "wms") || strings.Contains(lowerQuery, "mrp") || strings.Contains(lowerQuery, "bom") || strings.Contains(lowerQuery, "landed") || strings.Contains(lowerQuery, "flete") {
+		return r.staticPods["POD_SCM_LOGISTICS"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "evocrm") || strings.Contains(lowerQuery, "helpdesk") || strings.Contains(lowerQuery, "whatsapp") || strings.Contains(lowerQuery, "ticket") {
 		return r.staticPods["POD_EVOCRM_HELPDESK"].ProcessQuery(ctx, tenantID, query, dryRun)
 	} else if strings.Contains(lowerQuery, "sap") || strings.Contains(lowerQuery, "s4hana") || strings.Contains(lowerQuery, "odata") || strings.Contains(lowerQuery, "b1") {
 		return r.staticPods["POD_SAP_ENTERPRISE"].ProcessQuery(ctx, tenantID, query, dryRun)
