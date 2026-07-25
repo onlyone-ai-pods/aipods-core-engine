@@ -28,14 +28,31 @@ type SandboxQueryRequest struct {
 
 func main() {
 	r := gin.Default()
-	smartRouter := router.NewSmartRouter()
+	smartRouter := router.NewDynamicSmartRouter()
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 
 	// Healthcheck Endpoint
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "5.8.0",
+			"version": "7.0.0",
+		})
+	})
+
+	// Dynamic Pod Registration Endpoint (No recompilation required!)
+	r.POST("/api/v1/pods/register", func(c *gin.Context) {
+		var config router.DynamicPodConfig
+		if err := c.ShouldBindJSON(&config); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		smartRouter.RegisterDynamicPod(config)
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "REGISTERED",
+			"pod_id":  config.PodID,
+			"message": fmt.Sprintf("AI Pod '%s' registered dynamically at runtime without recompiling Go core.", config.Name),
 		})
 	})
 
@@ -68,9 +85,9 @@ func main() {
 		res, session, err := sandboxManager.ExecuteSandboxQuery(c.Request.Context(), req.SessionID, req.Message)
 		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":        err.Error(),
-				"session":      session,
-				"conversion":   "Crea tu cuenta gratis en 1 clic para guardar este AI Pod permanentemente",
+				"error":      err.Error(),
+				"session":    session,
+				"conversion": "Crea tu cuenta gratis en 1 clic para guardar este AI Pod permanentemente",
 			})
 			return
 		}

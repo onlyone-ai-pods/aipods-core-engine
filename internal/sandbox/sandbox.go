@@ -30,10 +30,10 @@ type SandboxSession struct {
 type SessionManager struct {
 	mu          sync.RWMutex
 	sessions    map[string]*SandboxSession
-	smartRouter *router.SmartRouter
+	smartRouter *router.DynamicSmartRouter
 }
 
-func NewSessionManager(smartRouter *router.SmartRouter) *SessionManager {
+func NewSessionManager(smartRouter *router.DynamicSmartRouter) *SessionManager {
 	return &SessionManager{
 		sessions:    make(map[string]*SandboxSession),
 		smartRouter: smartRouter,

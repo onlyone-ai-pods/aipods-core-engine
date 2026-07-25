@@ -8,7 +8,7 @@ import (
 )
 
 func TestSandboxSessionManager(t *testing.T) {
-	smartRouter := router.NewSmartRouter()
+	smartRouter := router.NewDynamicSmartRouter()
 	mgr := NewSessionManager(smartRouter)
 
 	session := mgr.CreateEphemeralSession("manual_afip_test.pdf")
