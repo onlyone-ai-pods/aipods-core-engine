@@ -13,6 +13,7 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 	"github.com/martinllanos/only-ai-pods/internal/pod/afip"
 	githubdevops "github.com/martinllanos/only-ai-pods/internal/pod/github_devops"
+	"github.com/martinllanos/only-ai-pods/internal/pod/sap"
 )
 
 // DynamicPodConfig represents a Pod registered dynamically via Database / API
@@ -95,6 +96,7 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 	// Register Core Static Pods
 	r.RegisterStaticPod(afip.NewAFIPPod())
 	r.RegisterStaticPod(githubdevops.NewGitHubDevOpsPod())
+	r.RegisterStaticPod(sap.NewSAPPod())
 
 	return r
 }
@@ -133,7 +135,9 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	}
 
 	// 2. Check Static Compiled Core Pods
-	if strings.Contains(lowerQuery, "github") || strings.Contains(lowerQuery, "odoo.sh") || strings.Contains(lowerQuery, "repo") || strings.Contains(lowerQuery, "despliegue") {
+	if strings.Contains(lowerQuery, "sap") || strings.Contains(lowerQuery, "s4hana") || strings.Contains(lowerQuery, "odata") || strings.Contains(lowerQuery, "b1") {
+		return r.staticPods["POD_SAP_ENTERPRISE"].ProcessQuery(ctx, tenantID, query, dryRun)
+	} else if strings.Contains(lowerQuery, "github") || strings.Contains(lowerQuery, "odoo.sh") || strings.Contains(lowerQuery, "repo") || strings.Contains(lowerQuery, "despliegue") {
 		return r.staticPods["POD_GITHUB_DEVOPS"].ProcessQuery(ctx, tenantID, query, dryRun)
 	}
 
