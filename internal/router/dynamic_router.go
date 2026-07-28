@@ -167,5 +167,5 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	}
 
 	// Default Fallback Pod
-	return r.staticPods["POD_AFIP_FINANCE"].ProcessQuery(ctx, tenantID, query, dryRun)
+	return r.staticPods["POD_AFIP_FISCAL"].ProcessQuery(ctx, tenantID, query, dryRun)
 }

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  playwright_browser:
+    image: mcr.microsoft.com/playwright:v1.40.0-jammy
+    container_name: aipods_playwright_test
+    user: "1001:1001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+    cap_drop:
+      - ALL
+    ports:
+      - "3000:3000"
+    environment:
+      - CONCURRENCY=5
+      - MAX_QUEUE_LENGTH=10
+      - TIMEOUT=30000
+    restart: unless-stopped

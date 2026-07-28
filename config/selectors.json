@@ -1,0 +1,36 @@
+{
+  "version": "2026.07.1",
+  "last_updated": "2026-07-28",
+  "description": "Registro desacoplado de selectores DOM para automatización ARCA / AFIP (POD_AFIP_FISCAL)",
+  "services": {
+    "auth": {
+      "cuit": ["id=F1:username", "input[name='F1:username']", "input[id*='username']"],
+      "next_btn": ["id=F1:btnSiguiente", "input[name='F1:btnSiguiente']"],
+      "password": ["id=F1:password", "input[name='F1:password']"],
+      "login_btn": ["id=F1:btnIngresar", "input[name='F1:btnIngresar']"]
+    },
+    "portal": {
+      "service_card": "#serviciosMasUtilizados div[style*='cursor: pointer']:has(h3:text-is('{nombre}'))",
+      "search_input": "input[placeholder*='Buscador'], #buscadorInput, input[type='search']",
+      "search_result": "a.dropdown-item:has-text('{nombre}'), li:has-text('{nombre}') a"
+    },
+    "mis_comprobantes": {
+      "btn_recibidos": ["#btnRecibidos", "button:has-text('Recibidos')", "a:has-text('Recibidos')"],
+      "btn_emitidos": ["#btnEmitidos", "button:has-text('Emitidos')", "a:has-text('Emitidos')"],
+      "datepicker": ["#fechaEmision", "input[name='fechaEmision']"],
+      "range_custom": ["li[data-range-key='Rango Personalizado']"],
+      "date_from": ["input[name='daterangepicker_start']"],
+      "date_to": ["input[name='daterangepicker_end']"],
+      "apply_range": ["button.applyBtn", "button:has-text('Aplicar')"],
+      "buscar": ["button:has-text('Buscar')", "input[type='submit'][value='Buscar']"],
+      "export_excel": ["a:has-text('Excel')", "button:has-text('Excel')"],
+      "export_csv": ["a:has-text('CSV')", "button:has-text('CSV')"]
+    },
+    "puntos_de_venta": {
+      "search_terms": ["Puntos de Venta", "Regímenes de Facturación"],
+      "select_empresa": ["input[type='button'][value*='LLANOS']", "input[value*='Ingresar']", "button:has-text('Seleccionar')"],
+      "abm_pv": ["a:has-text('Puntos de Venta')", "button:has-text('Puntos de Venta')", "input[value*='Puntos de Venta']"],
+      "table_rows": "table tbody tr"
+    }
+  }
+}

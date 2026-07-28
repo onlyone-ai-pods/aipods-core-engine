@@ -37,8 +37,8 @@ func (r *SmartRouter) RouteAndExecute(ctx context.Context, tenantID, query strin
 	if strings.Contains(lowerQuery, "github") || strings.Contains(lowerQuery, "odoo.sh") || strings.Contains(lowerQuery, "repo") || strings.Contains(lowerQuery, "despliegue") {
 		targetPod = r.pods["POD_GITHUB_DEVOPS"]
 	} else {
-		// Default to AFIP/Finance Pod
-		targetPod = r.pods["POD_AFIP_FINANCE"]
+		// Default To AFIP/Fiscal Pod
+		targetPod = r.pods["POD_AFIP_FISCAL"]
 	}
 
 	return targetPod.ProcessQuery(ctx, tenantID, query, dryRun)
