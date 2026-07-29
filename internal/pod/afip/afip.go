@@ -136,6 +136,35 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			citations = []string{"ARCA_MisComprobantes_LiveResult.pdf"}
 		}
 
+	} else if strings.Contains(lowerQuery, "monotributo") || strings.Contains(lowerQuery, "estado de cuenta") || strings.Contains(lowerQuery, "cuota") || strings.Contains(lowerQuery, "categoria") || strings.Contains(lowerQuery, "categoría") || strings.Contains(lowerQuery, "periodo") || strings.Contains(lowerQuery, "período") {
+
+		periodoFiltro, suggestion := p.ParsePeriodoMonotributo(query)
+
+		if dryRun {
+			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			cmdPreview := fmt.Sprintf("node scripts/monotributo_estado_cuenta.js --cuit=20262534538 --periodo=%s", periodoFiltro)
+
+			if suggestion != "" {
+				answer = fmt.Sprintf("🧾 **Estado de Cuenta Monotributo**\n\n%s\n\nComando a ejecutar:\n```bash\n%s\n```", suggestion, cmdPreview)
+			} else {
+				answer = fmt.Sprintf("🧾 **Estado de Cuenta Monotributo (Período: %s)**\n\nSe simula la consulta del estado de cuenta del Monotributo en ARCA para el CUIT del contribuyente.\n\nComando a ejecutar:\n```bash\n%s\n```", periodoFiltro, cmdPreview)
+			}
+			citations = []string{"ARCA_Monotributo_Spec_v2026.pdf", "RG_ARCA_Monotributo_2026.pdf"}
+
+			dryRunRes = &pod.DryRunResult{
+				IsDryRun:              true,
+				ActionName:            "consultar_monotributo_estado_cuenta",
+				Summary:               fmt.Sprintf("Consulta de Estado de Cuenta Monotributo (Período: %s).", periodoFiltro),
+				AffectedRecordsCount:  6,
+				GeneratedCommand:      cmdPreview,
+				RequiresHumanApproval: true,
+				ApprovalToken:         dynamicApprovalID,
+			}
+		} else {
+			answer = "### 🧾 Estado de Cuenta Monotributo\n\nSe completó la consulta del estado de cuenta del Monotributo."
+			citations = []string{"ARCA_Monotributo_LiveResult.pdf"}
+		}
+
 	} else if strings.Contains(lowerQuery, "csr") || strings.Contains(lowerQuery, "clave") || strings.Contains(lowerQuery, "certificado") {
 		generatedCmd := "openssl req -new -key privada.key -out pedido.csr"
 		answer = "Para generar la clave privada y el archivo CSR para AFIP/ARCA, ejecute el siguiente comando OpenSSL en su terminal:\n\n```bash\n" + generatedCmd + "\n```\n\nPosteriormente, cargue el certificado `.crt` emitido por AFIP en la configuración de la compañía."
@@ -274,4 +303,77 @@ func (p *AFIPPod) SearchPuntosDeVenta(query string) ([]PuntoDeVenta, string) {
 	}
 
 	return matches, cleanQuery
+}
+
+// --- Monotributo Estado de Cuenta ---
+
+type PeriodoMonotributo struct {
+	Periodo   string
+	Cuota     string
+	Estado    string
+	FechaPago string
+}
+
+var DatasetMonotributo = []PeriodoMonotributo{
+	{Periodo: "07/2026", Cuota: "$52.530,48", Estado: "PENDIENTE", FechaPago: "—"},
+	{Periodo: "06/2026", Cuota: "$52.530,48", Estado: "PAGADO", FechaPago: "18/06/2026"},
+	{Periodo: "05/2026", Cuota: "$52.530,48", Estado: "PAGADO", FechaPago: "20/05/2026"},
+	{Periodo: "04/2026", Cuota: "$48.920,00", Estado: "PAGADO", FechaPago: "19/04/2026"},
+	{Periodo: "03/2026", Cuota: "$48.920,00", Estado: "PAGADO", FechaPago: "20/03/2026"},
+	{Periodo: "02/2026", Cuota: "$48.920,00", Estado: "ADEUDADO", FechaPago: "—"},
+}
+
+var mesesMap = map[string]string{
+	"enero": "01", "febrero": "02", "marzo": "03", "abril": "04",
+	"mayo": "05", "junio": "06", "julio": "07", "agosto": "08",
+	"septiembre": "09", "octubre": "10", "noviembre": "11", "diciembre": "12",
+	"ene": "01", "feb": "02", "mar": "03", "abr": "04",
+	"may": "05", "jun": "06", "jul": "07", "ago": "08",
+	"sep": "09", "oct": "10", "nov": "11", "dic": "12",
+}
+
+func (p *AFIPPod) ParsePeriodoMonotributo(query string) (string, string) {
+	lower := strings.ToLower(query)
+
+	// Try to find MM/YYYY pattern
+	for _, periodo := range DatasetMonotributo {
+		if strings.Contains(lower, strings.ToLower(periodo.Periodo)) {
+			return periodo.Periodo, ""
+		}
+	}
+
+	// Try month name → map to number
+	for nombre, numero := range mesesMap {
+		if strings.Contains(lower, nombre) {
+			// Check if year is mentioned
+			if strings.Contains(lower, "2026") {
+				periodo := numero + "/2026"
+				// Verify it exists in dataset
+				for _, p := range DatasetMonotributo {
+					if p.Periodo == periodo {
+						return periodo, ""
+					}
+				}
+				return periodo, fmt.Sprintf("⚠️ El período **%s/2026** no se encontró en el estado de cuenta. Los períodos disponibles son: **02/2026** a **07/2026**.\n\n💡 *Intente escribir el período en formato MM/AAAA (ej: '07/2026') o el nombre del mes (ej: 'julio 2026').*", numero)
+			}
+			// No year specified → suggest with year
+			return numero + "/2026", fmt.Sprintf("📅 Asumimos que se refiere a **%s/2026**. Si desea otro año, escriba el período completo (ej: '%s/2025').\n\n💡 *Períodos disponibles: 02/2026, 03/2026, 04/2026, 05/2026, 06/2026, 07/2026.*", numero, numero)
+		}
+	}
+
+	// Try bare number like "7" or "07"
+	for _, num := range []string{"02", "03", "04", "05", "06", "07"} {
+		bare := strings.TrimLeft(num, "0")
+		if lower == bare || lower == num || strings.Contains(lower, " "+bare+" ") || strings.Contains(lower, " "+num+" ") || strings.HasSuffix(lower, " "+bare) || strings.HasSuffix(lower, " "+num) {
+			return num + "/2026", fmt.Sprintf("📅 Asumimos que se refiere al período **%s/2026**. Si desea otro año, escriba el período completo.\n\n💡 *Períodos disponibles: 02/2026, 03/2026, 04/2026, 05/2026, 06/2026, 07/2026.*", num)
+		}
+	}
+
+	// Unrecognized period → show all with suggestion
+	if strings.Contains(lower, "periodo") || strings.Contains(lower, "período") || strings.Contains(lower, "mes") {
+		return "todos", "📅 No pude identificar un período específico. Por favor, indicá el período en alguno de estos formatos:\n\n  • **MM/AAAA** → ej: `07/2026`\n  • **Nombre del mes + año** → ej: `julio 2026`\n  • **Nombre del mes** → ej: `julio` (asume año actual)\n\n💡 *Períodos disponibles: 02/2026, 03/2026, 04/2026, 05/2026, 06/2026, 07/2026.*"
+	}
+
+	// Default: show all periods
+	return "todos", ""
 }
