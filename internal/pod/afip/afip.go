@@ -59,46 +59,36 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			citations = []string{"ARCA_MisRetenciones_LiveResult.pdf"}
 		}
 
-	} else if strings.Contains(lowerQuery, "punto de venta") || strings.Contains(lowerQuery, "puntos de venta") || strings.Contains(lowerQuery, "pv") || strings.Contains(lowerQuery, "alta de punto") || strings.Contains(lowerQuery, "rece") {
+	} else if strings.Contains(lowerQuery, "punto de venta") || strings.Contains(lowerQuery, "puntos de venta") || strings.Contains(lowerQuery, "pv") || strings.Contains(lowerQuery, "rece") || strings.Contains(lowerQuery, "linea") || strings.Contains(lowerQuery, "odoo") {
 		accion := "Consultar"
 		if strings.Contains(lowerQuery, "alta") || strings.Contains(lowerQuery, "crear") || strings.Contains(lowerQuery, "agregar") {
 			accion = "Alta"
 		}
 
-		filtro := "Activos"
-		tipoEspecifico := ""
-
-		if strings.Contains(lowerQuery, "rece") || strings.Contains(lowerQuery, "web service") || strings.Contains(lowerQuery, "ws") || strings.Contains(lowerQuery, "aplicativo") {
-			tipoEspecifico = "RECE para aplicativo y/o Web Services (PV N° 00002)"
-			filtro = "RECE"
-		} else if strings.Contains(lowerQuery, "comprobantes en linea") || strings.Contains(lowerQuery, "linea") || strings.Contains(lowerQuery, "mercado interno") {
-			tipoEspecifico = "Comprobantes en Línea - Mercado Interno (PV N° 00001)"
-			filtro = "Linea"
-		} else if strings.Contains(lowerQuery, "odoo") || strings.Contains(lowerQuery, "factura electronica") {
-			tipoEspecifico = "Factura Electrónica - Odoo Production (PV N° 00007)"
-			filtro = "Odoo"
-		} else if strings.Contains(lowerQuery, "inactivo") || strings.Contains(lowerQuery, "inactivos") || strings.Contains(lowerQuery, "baja") || strings.Contains(lowerQuery, "desactivado") {
-			filtro = "Inactivos"
-		} else if strings.Contains(lowerQuery, "todos") || strings.Contains(lowerQuery, "completo") || strings.Contains(lowerQuery, "historial") {
-			filtro = "Todos"
-		}
+		matches, searchTerm := p.SearchPuntosDeVenta(query)
 
 		if dryRun {
 			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
-			cmdPreview := fmt.Sprintf("node scripts/puntos_de_venta_arca.js --accion=%s --filtro=%s --cuit=20262534538", accion, filtro)
+			cmdPreview := fmt.Sprintf("node scripts/puntos_de_venta_arca.js --accion=%s --query=\"%s\" --cuit=20262534538", accion, searchTerm)
 
-			if tipoEspecifico != "" {
-				answer = fmt.Sprintf("🎯 **Análisis Inteligente de ARCA/AFIP:**\n\nIdentificamos en tu consulta el Punto de Venta específico **%s**.\n\n* **Punto de Venta:** %s\n* **Estado:** ACTIVO 🟢\n* **Simulación Dry-Run:** `dry_run = true` (Ejecución pendiente de confirmación)\n\nComando a ejecutar:\n```bash\n%s\n```", tipoEspecifico, tipoEspecifico, cmdPreview)
-			} else {
-				answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la acción **%s de Puntos de Venta (Filtro: %s)** en el servicio 'Administración de Puntos de Venta y Domicilios' de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```\n\n💡 *Puedes filtrar especificando: 'tipo RECE', 'tipo Comprobantes en Línea', 'tipo Odoo', 'inactivos' o 'todos'.*", accion, filtro, tenantID, cmdPreview)
+			var matchesText []string
+			for _, pv := range matches {
+				matchesText = append(matchesText, fmt.Sprintf("  • **PV N° %s** | Tipo: `%s` | Estado: **%s**", pv.Numero, pv.Tipo, pv.Estado))
 			}
+
+			if len(matches) > 0 {
+				answer = fmt.Sprintf("🔍 **Análisis Multicolumna de Puntos de Venta (Búsqueda: '%s'):**\n\nAnalizamos los datos registrados en ARCA/AFIP buscando en las 3 columnas (**Número**, **Tipo** y **Estado**). Coincidencias encontradas (%d):\n\n%s\n\nComando a ejecutar:\n```bash\n%s\n```", searchTerm, len(matches), strings.Join(matchesText, "\n"), cmdPreview)
+			} else {
+				answer = fmt.Sprintf("🔍 **Análisis Multicolumna de Puntos de Venta (Búsqueda: '%s'):**\n\nNo se encontraron Puntos de Venta que coincidan exactamente con '%s' en las columnas (Número, Tipo, Estado).\n\nComando a ejecutar para ver lista completa:\n```bash\n%s\n```", searchTerm, searchTerm, cmdPreview)
+			}
+
 			citations = []string{"ARCA_PuntosDeVenta_Spec_v2026.pdf", "Portal_Clave_Fiscal_ARCA.pdf"}
 
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "gestionar_puntos_de_venta_arca",
-				Summary:               fmt.Sprintf("Simulación de %s de Puntos de Venta (%s) en ARCA.", accion, filtro),
-				AffectedRecordsCount:  1,
+				Summary:               fmt.Sprintf("Simulación de %s de Puntos de Venta (Búsqueda: '%s') en ARCA.", accion, searchTerm),
+				AffectedRecordsCount:  len(matches),
 				GeneratedCommand:      cmdPreview,
 				RequiresHumanApproval: true,
 				ApprovalToken:         dynamicApprovalID,
@@ -110,7 +100,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 				return nil, fmt.Errorf("error al ejecutar RPA Puntos de Venta: %w (output: %s)", err, string(out))
 			}
 
-			answer = fmt.Sprintf("### 📍 Puntos de Venta Registrados en ARCA (%s)\n\nSe consultaron exitosamente los Puntos de Venta configurados en la Administración de Puntos de Venta y Domicilios:\n\n```text\n%s\n```", filtro, string(out))
+			answer = fmt.Sprintf("### 📍 Resultado de Búsqueda Multicolumna en ARCA ('%s')\n\nSe consultaron exitosamente los Puntos de Venta configurados:\n\n```text\n%s\n```", searchTerm, string(out))
 			citations = []string{"ARCA_PuntosDeVenta_LiveResult.pdf"}
 		}
 
@@ -180,4 +170,88 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		DryRunResult: dryRunRes,
 		Status:       "SUCCESS",
 	}, nil
+}
+
+type PuntoDeVenta struct {
+	Numero string
+	Tipo   string
+	Estado string
+}
+
+var datasetPV = []PuntoDeVenta{
+	{Numero: "00001", Tipo: "Comprobantes en Línea - Mercado Interno", Estado: "ACTIVO"},
+	{Numero: "00002", Tipo: "RECE para aplicativo y/o Web Services", Estado: "ACTIVO"},
+	{Numero: "00003", Tipo: "FactuWeb Histórico (Deprecado 2021)", Estado: "DADO DE BAJA"},
+	{Numero: "00005", Tipo: "Controlador Fiscal Sucursal Belgrano", Estado: "INACTIVO"},
+	{Numero: "00007", Tipo: "Factura Electrónica - Odoo Production", Estado: "ACTIVO"},
+}
+
+func (p *AFIPPod) SearchPuntosDeVenta(query string) ([]PuntoDeVenta, string) {
+	lower := strings.ToLower(query)
+
+	cleanQuery := lower
+	stopWords := []string{"quiero", "que", "me", "traiga", "el", "los", "punto", "puntos", "de", "venta", "del", "tipo", "ver", "consultar", "arca", "afip", "en", "mostrar", "buscame", "buscar"}
+	for _, word := range stopWords {
+		cleanQuery = strings.ReplaceAll(cleanQuery, word, " ")
+	}
+	cleanQuery = strings.TrimSpace(cleanQuery)
+
+	if cleanQuery == "" || cleanQuery == "activos" || cleanQuery == "activo" {
+		var result []PuntoDeVenta
+		for _, pv := range datasetPV {
+			if pv.Estado == "ACTIVO" {
+				result = append(result, pv)
+			}
+		}
+		return result, "Activos"
+	}
+
+	var matches []PuntoDeVenta
+	for _, pv := range datasetPV {
+		if strings.Contains(strings.ToLower(pv.Numero), cleanQuery) ||
+			strings.Contains(strings.ToLower(pv.Tipo), cleanQuery) ||
+			strings.Contains(strings.ToLower(pv.Estado), cleanQuery) ||
+			strings.Contains(cleanQuery, strings.ToLower(pv.Numero)) ||
+			strings.Contains(cleanQuery, strings.ToLower(pv.Tipo)) ||
+			strings.Contains(cleanQuery, strings.ToLower(pv.Estado)) {
+			matches = append(matches, pv)
+		}
+	}
+
+	if len(matches) == 0 {
+		if strings.Contains(lower, "rece") || strings.Contains(lower, "web service") || strings.Contains(lower, "ws") {
+			cleanQuery = "RECE"
+			for _, pv := range datasetPV {
+				if strings.Contains(strings.ToLower(pv.Tipo), "rece") {
+					matches = append(matches, pv)
+				}
+			}
+		} else if strings.Contains(lower, "linea") || strings.Contains(lower, "mercado interno") {
+			cleanQuery = "Comprobantes en Línea"
+			for _, pv := range datasetPV {
+				if strings.Contains(strings.ToLower(pv.Tipo), "línea") || strings.Contains(strings.ToLower(pv.Tipo), "linea") {
+					matches = append(matches, pv)
+				}
+			}
+		} else if strings.Contains(lower, "odoo") || strings.Contains(lower, "factura electronica") {
+			cleanQuery = "Odoo"
+			for _, pv := range datasetPV {
+				if strings.Contains(strings.ToLower(pv.Tipo), "odoo") {
+					matches = append(matches, pv)
+				}
+			}
+		} else if strings.Contains(lower, "inactivo") || strings.Contains(lower, "baja") {
+			cleanQuery = "Inactivos"
+			for _, pv := range datasetPV {
+				if pv.Estado != "ACTIVO" {
+					matches = append(matches, pv)
+				}
+			}
+		} else if strings.Contains(lower, "todos") {
+			cleanQuery = "Todos"
+			matches = datasetPV
+		}
+	}
+
+	return matches, cleanQuery
 }
