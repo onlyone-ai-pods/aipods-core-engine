@@ -189,8 +189,63 @@ var datasetPV = []PuntoDeVenta{
 func (p *AFIPPod) SearchPuntosDeVenta(query string) ([]PuntoDeVenta, string) {
 	lower := strings.ToLower(query)
 
+	// Direct entity keyword matching for conversational queries
+	if strings.Contains(lower, "odoo") {
+		var matches []PuntoDeVenta
+		for _, pv := range datasetPV {
+			if strings.Contains(strings.ToLower(pv.Tipo), "odoo") {
+				matches = append(matches, pv)
+			}
+		}
+		return matches, "Odoo"
+	}
+
+	if strings.Contains(lower, "rece") || strings.Contains(lower, "web service") || strings.Contains(lower, "ws") || strings.Contains(lower, "aplicativo") {
+		var matches []PuntoDeVenta
+		for _, pv := range datasetPV {
+			if strings.Contains(strings.ToLower(pv.Tipo), "rece") {
+				matches = append(matches, pv)
+			}
+		}
+		return matches, "RECE"
+	}
+
+	if strings.Contains(lower, "belgrano") || strings.Contains(lower, "controlador") {
+		var matches []PuntoDeVenta
+		for _, pv := range datasetPV {
+			if strings.Contains(strings.ToLower(pv.Tipo), "belgrano") || strings.Contains(strings.ToLower(pv.Tipo), "controlador") {
+				matches = append(matches, pv)
+			}
+		}
+		return matches, "Sucursal Belgrano"
+	}
+
+	if strings.Contains(lower, "linea") || strings.Contains(lower, "mercado interno") {
+		var matches []PuntoDeVenta
+		for _, pv := range datasetPV {
+			if strings.Contains(strings.ToLower(pv.Tipo), "línea") || strings.Contains(strings.ToLower(pv.Tipo), "linea") {
+				matches = append(matches, pv)
+			}
+		}
+		return matches, "Comprobantes en Línea"
+	}
+
+	if strings.Contains(lower, "inactivo") || strings.Contains(lower, "baja") || strings.Contains(lower, "desactivado") {
+		var matches []PuntoDeVenta
+		for _, pv := range datasetPV {
+			if pv.Estado != "ACTIVO" {
+				matches = append(matches, pv)
+			}
+		}
+		return matches, "Inactivos"
+	}
+
+	if strings.Contains(lower, "todos") || strings.Contains(lower, "completo") || strings.Contains(lower, "historial") {
+		return datasetPV, "Todos"
+	}
+
 	cleanQuery := lower
-	stopWords := []string{"quiero", "que", "me", "traiga", "el", "los", "punto", "puntos", "de", "venta", "del", "tipo", "ver", "consultar", "arca", "afip", "en", "mostrar", "buscame", "buscar"}
+	stopWords := []string{"quiero", "que", "esta", "utilizando", "usa", "usando", "me", "traiga", "el", "los", "punto", "puntos", "de", "venta", "del", "tipo", "ver", "consultar", "arca", "afip", "en", "mostrar", "buscame", "buscar"}
 	for _, word := range stopWords {
 		cleanQuery = strings.ReplaceAll(cleanQuery, word, " ")
 	}
@@ -215,41 +270,6 @@ func (p *AFIPPod) SearchPuntosDeVenta(query string) ([]PuntoDeVenta, string) {
 			strings.Contains(cleanQuery, strings.ToLower(pv.Tipo)) ||
 			strings.Contains(cleanQuery, strings.ToLower(pv.Estado)) {
 			matches = append(matches, pv)
-		}
-	}
-
-	if len(matches) == 0 {
-		if strings.Contains(lower, "rece") || strings.Contains(lower, "web service") || strings.Contains(lower, "ws") {
-			cleanQuery = "RECE"
-			for _, pv := range datasetPV {
-				if strings.Contains(strings.ToLower(pv.Tipo), "rece") {
-					matches = append(matches, pv)
-				}
-			}
-		} else if strings.Contains(lower, "linea") || strings.Contains(lower, "mercado interno") {
-			cleanQuery = "Comprobantes en Línea"
-			for _, pv := range datasetPV {
-				if strings.Contains(strings.ToLower(pv.Tipo), "línea") || strings.Contains(strings.ToLower(pv.Tipo), "linea") {
-					matches = append(matches, pv)
-				}
-			}
-		} else if strings.Contains(lower, "odoo") || strings.Contains(lower, "factura electronica") {
-			cleanQuery = "Odoo"
-			for _, pv := range datasetPV {
-				if strings.Contains(strings.ToLower(pv.Tipo), "odoo") {
-					matches = append(matches, pv)
-				}
-			}
-		} else if strings.Contains(lower, "inactivo") || strings.Contains(lower, "baja") {
-			cleanQuery = "Inactivos"
-			for _, pv := range datasetPV {
-				if pv.Estado != "ACTIVO" {
-					matches = append(matches, pv)
-				}
-			}
-		} else if strings.Contains(lower, "todos") {
-			cleanQuery = "Todos"
-			matches = datasetPV
 		}
 	}
 
