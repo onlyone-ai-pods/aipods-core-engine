@@ -59,9 +59,9 @@ func NewApprovalStore() *ApprovalStore {
 	store.items["dryrun_token_sha256_mock99120"] = &ApprovalItem{
 		Token:       "dryrun_token_sha256_mock99120",
 		PodID:       "POD_AFIP_FISCAL",
-		ActionName:  "descargar_retenciones_arca",
-		Summary:     "Simulación de consulta de retenciones/percepciones en ARCA (Mirequa).",
-		Command:     "node scripts/mis_retenciones_arca.js --cuit=20262534538",
+		ActionName:  "gestionar_puntos_de_venta_arca",
+		Summary:     "Simulación de consulta de Puntos de Venta en ARCA (Administración de PV y Domicilios).",
+		Command:     "node scripts/puntos_de_venta_arca.js --accion=Consultar --cuit=20262534538",
 		TenantID:    "TENANT_DEMO_001",
 		Status:      "PENDING",
 		RequestedAt: time.Now().Add(-5 * time.Minute),
