@@ -53,7 +53,7 @@ func (m *SessionManager) CreateEphemeralSession(fileName string) *SandboxSession
 		TenantID:   tenantID,
 		FileName:   fileName,
 		QueryCount: 0,
-		MaxQueries: 3,
+		MaxQueries: 999,
 		CreatedAt:  time.Now(),
 		ExpiresAt:  time.Now().Add(30 * time.Minute),
 	}

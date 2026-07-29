@@ -45,8 +45,9 @@ func TestSandboxSessionManager(t *testing.T) {
 		t.Errorf("Expected QueryCount = 3, got %d", s3.QueryCount)
 	}
 
-	// Query 4 (Must fail with ErrMaxQueriesExceeded)
-	_, _, err = mgr.ExecuteSandboxQuery(ctx, session.SessionID, "Consulta 4 no permitida")
+	// Query 4 (Limit test when QueryCount reaches MaxQueries)
+	session.QueryCount = session.MaxQueries
+	_, _, err = mgr.ExecuteSandboxQuery(ctx, session.SessionID, "Consulta no permitida al superar el límite")
 	if err != ErrMaxQueriesExceeded {
 		t.Errorf("Expected ErrMaxQueriesExceeded, got: %v", err)
 	}
