@@ -59,14 +59,25 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			citations = []string{"ARCA_MisRetenciones_LiveResult.pdf"}
 		}
 
-	} else if strings.Contains(lowerQuery, "punto de venta") || strings.Contains(lowerQuery, "puntos de venta") || strings.Contains(lowerQuery, "pv") || strings.Contains(lowerQuery, "alta de punto") {
+	} else if strings.Contains(lowerQuery, "punto de venta") || strings.Contains(lowerQuery, "puntos de venta") || strings.Contains(lowerQuery, "pv") || strings.Contains(lowerQuery, "alta de punto") || strings.Contains(lowerQuery, "rece") {
 		accion := "Consultar"
 		if strings.Contains(lowerQuery, "alta") || strings.Contains(lowerQuery, "crear") || strings.Contains(lowerQuery, "agregar") {
 			accion = "Alta"
 		}
 
 		filtro := "Activos"
-		if strings.Contains(lowerQuery, "inactivo") || strings.Contains(lowerQuery, "inactivos") || strings.Contains(lowerQuery, "baja") || strings.Contains(lowerQuery, "desactivado") {
+		tipoEspecifico := ""
+
+		if strings.Contains(lowerQuery, "rece") || strings.Contains(lowerQuery, "web service") || strings.Contains(lowerQuery, "ws") || strings.Contains(lowerQuery, "aplicativo") {
+			tipoEspecifico = "RECE para aplicativo y/o Web Services (PV N° 00002)"
+			filtro = "RECE"
+		} else if strings.Contains(lowerQuery, "comprobantes en linea") || strings.Contains(lowerQuery, "linea") || strings.Contains(lowerQuery, "mercado interno") {
+			tipoEspecifico = "Comprobantes en Línea - Mercado Interno (PV N° 00001)"
+			filtro = "Linea"
+		} else if strings.Contains(lowerQuery, "odoo") || strings.Contains(lowerQuery, "factura electronica") {
+			tipoEspecifico = "Factura Electrónica - Odoo Production (PV N° 00007)"
+			filtro = "Odoo"
+		} else if strings.Contains(lowerQuery, "inactivo") || strings.Contains(lowerQuery, "inactivos") || strings.Contains(lowerQuery, "baja") || strings.Contains(lowerQuery, "desactivado") {
 			filtro = "Inactivos"
 		} else if strings.Contains(lowerQuery, "todos") || strings.Contains(lowerQuery, "completo") || strings.Contains(lowerQuery, "historial") {
 			filtro = "Todos"
@@ -75,14 +86,19 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		if dryRun {
 			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
 			cmdPreview := fmt.Sprintf("node scripts/puntos_de_venta_arca.js --accion=%s --filtro=%s --cuit=20262534538", accion, filtro)
-			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la acción **%s de Puntos de Venta (Filtro: %s)** en el servicio 'Administración de Puntos de Venta y Domicilios' de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```\n\n💡 *Puedes cambiar el filtro escribiendo en la consola: 'Ver activos', 'Ver inactivos' o 'Ver todos'.*", accion, filtro, tenantID, cmdPreview)
+
+			if tipoEspecifico != "" {
+				answer = fmt.Sprintf("🎯 **Análisis Inteligente de ARCA/AFIP:**\n\nIdentificamos en tu consulta el Punto de Venta específico **%s**.\n\n* **Punto de Venta:** %s\n* **Estado:** ACTIVO 🟢\n* **Simulación Dry-Run:** `dry_run = true` (Ejecución pendiente de confirmación)\n\nComando a ejecutar:\n```bash\n%s\n```", tipoEspecifico, tipoEspecifico, cmdPreview)
+			} else {
+				answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la acción **%s de Puntos de Venta (Filtro: %s)** en el servicio 'Administración de Puntos de Venta y Domicilios' de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```\n\n💡 *Puedes filtrar especificando: 'tipo RECE', 'tipo Comprobantes en Línea', 'tipo Odoo', 'inactivos' o 'todos'.*", accion, filtro, tenantID, cmdPreview)
+			}
 			citations = []string{"ARCA_PuntosDeVenta_Spec_v2026.pdf", "Portal_Clave_Fiscal_ARCA.pdf"}
 
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "gestionar_puntos_de_venta_arca",
 				Summary:               fmt.Sprintf("Simulación de %s de Puntos de Venta (%s) en ARCA.", accion, filtro),
-				AffectedRecordsCount:  6,
+				AffectedRecordsCount:  1,
 				GeneratedCommand:      cmdPreview,
 				RequiresHumanApproval: true,
 				ApprovalToken:         dynamicApprovalID,
