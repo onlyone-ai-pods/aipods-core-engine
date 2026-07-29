@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/assets/aipods_banner_core_engine.jpg" alt="AI Pods Core Engine by OnlyOne" width="100%" style="border-radius: 8px;">
+</p>
+
 # ⚙️ AI Pods Enterprise (SaaS) - Backend Engine (`aipods-core-engine`)
 
 Este repositorio contiene el motor backend en **Golang 1.22+**, microservicios de orquestación, Smart Router, evaluador multi-tenant y la pila de desarrollo local de **AI Pods Enterprise SaaS Platform**.
