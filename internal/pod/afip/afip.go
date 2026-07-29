@@ -65,16 +65,23 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			accion = "Alta"
 		}
 
+		filtro := "Activos"
+		if strings.Contains(lowerQuery, "inactivo") || strings.Contains(lowerQuery, "inactivos") || strings.Contains(lowerQuery, "baja") || strings.Contains(lowerQuery, "desactivado") {
+			filtro = "Inactivos"
+		} else if strings.Contains(lowerQuery, "todos") || strings.Contains(lowerQuery, "completo") || strings.Contains(lowerQuery, "historial") {
+			filtro = "Todos"
+		}
+
 		if dryRun {
 			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
-			cmdPreview := fmt.Sprintf("node scripts/puntos_de_venta_arca.js --accion=%s --cuit=20262534538", accion)
-			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la acción **%s de Puntos de Venta** en el servicio 'Administración de Puntos de Venta y Domicilios' de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```", accion, tenantID, cmdPreview)
+			cmdPreview := fmt.Sprintf("node scripts/puntos_de_venta_arca.js --accion=%s --filtro=%s --cuit=20262534538", accion, filtro)
+			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la acción **%s de Puntos de Venta (Filtro: %s)** en el servicio 'Administración de Puntos de Venta y Domicilios' de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```\n\n💡 *Puedes cambiar el filtro escribiendo en la consola: 'Ver activos', 'Ver inactivos' o 'Ver todos'.*", accion, filtro, tenantID, cmdPreview)
 			citations = []string{"ARCA_PuntosDeVenta_Spec_v2026.pdf", "Portal_Clave_Fiscal_ARCA.pdf"}
 
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "gestionar_puntos_de_venta_arca",
-				Summary:               fmt.Sprintf("Simulación de %s de Puntos de Venta en ARCA.", accion),
+				Summary:               fmt.Sprintf("Simulación de %s de Puntos de Venta (%s) en ARCA.", accion, filtro),
 				AffectedRecordsCount:  6,
 				GeneratedCommand:      cmdPreview,
 				RequiresHumanApproval: true,
@@ -87,7 +94,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 				return nil, fmt.Errorf("error al ejecutar RPA Puntos de Venta: %w (output: %s)", err, string(out))
 			}
 
-			answer = fmt.Sprintf("### 📍 Puntos de Venta Registrados en ARCA\n\nSe consultaron exitosamente los Puntos de Venta configurados en la Administración de Puntos de Venta y Domicilios:\n\n```text\n%s\n```", string(out))
+			answer = fmt.Sprintf("### 📍 Puntos de Venta Registrados en ARCA (%s)\n\nSe consultaron exitosamente los Puntos de Venta configurados en la Administración de Puntos de Venta y Domicilios:\n\n```text\n%s\n```", filtro, string(out))
 			citations = []string{"ARCA_PuntosDeVenta_LiveResult.pdf"}
 		}
 
