@@ -27,3 +27,19 @@ type BaseAIPod interface {
 	Name() string
 	ProcessQuery(ctx context.Context, tenantID string, query string, dryRun bool) (*PodResponse, error)
 }
+
+// SlashCommand defines a command that can be triggered by typing '/' in the chat.
+type SlashCommand struct {
+	Command     string `json:"command"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Icon        string `json:"icon"`
+	Category    string `json:"category"`
+	Example     string `json:"example"`
+}
+
+// SlashCommandProvider is an optional interface that AI Pods can implement
+// to expose their available slash commands to the frontend.
+type SlashCommandProvider interface {
+	SlashCommands() []SlashCommand
+}
