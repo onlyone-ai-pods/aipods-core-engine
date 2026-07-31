@@ -13,8 +13,18 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/rag"
 	"github.com/martinllanos/only-ai-pods/internal/router"
 	"github.com/martinllanos/only-ai-pods/internal/sandbox"
+	"github.com/martinllanos/only-ai-pods/internal/security"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
+
+type FeedbackRequest struct {
+	MessageID int    `json:"message_id"`
+	Type      string `json:"type" binding:"required"` // "up" | "down"
+	Reason    string `json:"reason,omitempty"`
+	PodID     string `json:"pod_id,omitempty"`
+	Query     string `json:"query,omitempty"`
+	TenantID  string `json:"tenant_id,omitempty"`
+}
 
 type ChatRequest struct {
 	TenantID string `json:"tenant_id" binding:"required"`
@@ -175,6 +185,10 @@ func main() {
 	r := gin.Default()
 	r.Use(CORSMiddleware())
 
+	// Initialize Rate Limiter Middleware (Issue #2 / SPEC-CORE-07)
+	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 60)
+	r.Use(rateLimiter.Middleware())
+
 	smartRouter := router.NewDynamicSmartRouter()
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	approvalStore := NewApprovalStore()
@@ -188,7 +202,35 @@ func main() {
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "28.0.0",
+			"version": "51.0.0",
+		})
+	})
+
+	// Feedback Endpoint — Reactive Redis Cache Purge on 👎 (Issue #14 & SPEC-CORE-17)
+	r.POST("/api/v1/feedback", func(c *gin.Context) {
+		var req FeedbackRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		tenantID := req.TenantID
+		if tenantID == "" {
+			tenantID = "GLOBAL"
+		}
+
+		purged := false
+		if req.Type == "down" && req.Query != "" {
+			purged = semanticCache.PurgeKey(c.Request.Context(), tenantID, req.Query)
+			fmt.Printf("🧹 [REDIS CACHE PURGE] Purged cache key for tenant='%s' query='%s' due to 👎 feedback\n", tenantID, req.Query)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "ACCEPTED",
+			"feedback_type": req.Type,
+			"reason":        req.Reason,
+			"cache_purged":  purged,
+			"message":       "Feedback registrado exitosamente. Caché de Redis actualizado.",
 		})
 	})
 
