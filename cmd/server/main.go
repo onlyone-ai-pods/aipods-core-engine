@@ -21,6 +21,13 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/vault"
 )
 
+type SwarmExecuteRequest struct {
+	TenantID   string   `json:"tenant_id"`
+	Query      string   `json:"query" binding:"required"`
+	TargetPods []string `json:"target_pods"`
+	DryRun     bool     `json:"dry_run"`
+}
+
 type StoreSecretRequest struct {
 	KeyName     string `json:"key_name" binding:"required"`
 	SecretValue string `json:"secret_value" binding:"required"`
@@ -209,6 +216,7 @@ func main() {
 	r.Use(rateLimiter.Middleware())
 
 	smartRouter := router.NewDynamicSmartRouter()
+	swarmOrchestrator := router.NewSwarmOrchestrator(smartRouter)
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	approvalStore := NewApprovalStore()
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
@@ -223,8 +231,30 @@ func main() {
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "56.0.0",
+			"version": "60.0.0",
 		})
+	})
+
+	// Swarm Protocol Multi-Pod Orchestration Endpoint (Issue #12 / SPEC-CORE-33)
+	r.POST("/api/v1/swarm/execute", func(c *gin.Context) {
+		var req SwarmExecuteRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		tenantID := req.TenantID
+		if tenantID == "" {
+			tenantID = "TENANT_DEMO_001"
+		}
+
+		swarmRes, err := swarmOrchestrator.ExecuteSwarm(c.Request.Context(), tenantID, req.Query, req.TargetPods, req.DryRun)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, swarmRes)
 	})
 
 	// Native Vault Endpoints (Issue #11 / SPEC-CORE-27)
