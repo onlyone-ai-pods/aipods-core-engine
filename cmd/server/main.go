@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/martinllanos/only-ai-pods/internal/billing"
 	"github.com/martinllanos/only-ai-pods/internal/rag"
 	"github.com/martinllanos/only-ai-pods/internal/router"
 	"github.com/martinllanos/only-ai-pods/internal/sandbox"
@@ -17,6 +18,12 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/telemetry"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
+
+type PaymentWebhookRequest struct {
+	TenantID      string  `json:"tenant_id" binding:"required"`
+	InvoiceNumber string  `json:"invoice_number" binding:"required"`
+	AmountUSD     float64 `json:"amount_usd" binding:"required"`
+}
 
 type FeedbackRequest struct {
 	MessageID int    `json:"message_id"`
@@ -193,6 +200,7 @@ func main() {
 	smartRouter := router.NewDynamicSmartRouter()
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	approvalStore := NewApprovalStore()
+	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
 
 	// Initialize RAG Engine Stack
 	vectorStore := rag.NewVectorStore("localhost:6333", "aipods_vectors")
@@ -203,7 +211,42 @@ func main() {
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "53.0.0",
+			"version": "54.0.0",
+		})
+	})
+
+	// Odoo Billing Subscription GET Endpoint (Issue #8 / SPEC-CORE-26)
+	r.GET("/api/v1/billing/subscription", func(c *gin.Context) {
+		tenantID := c.Query("tenant_id")
+		if tenantID == "" {
+			tenantID = "TENANT_DEMO_001"
+		}
+		sub, err := odooBilling.GetSubscription(c.Request.Context(), tenantID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, sub)
+	})
+
+	// Odoo Billing Payment Webhook Endpoint (Issue #8 / SPEC-CORE-26)
+	r.POST("/api/v1/billing/webhook", func(c *gin.Context) {
+		var req PaymentWebhookRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		sub, err := odooBilling.ProcessPaymentWebhook(c.Request.Context(), req.TenantID, req.InvoiceNumber, req.AmountUSD)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "PROD_ACTIVE",
+			"subscription": sub,
+			"message":      "Pago confirmado e inyectado desde Odoo Billing. Pods activos en PROD_ACTIVE.",
 		})
 	})
 
