@@ -3,6 +3,7 @@ package security
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -73,6 +74,13 @@ func (r *RedisRateLimiter) Allow(key string) (bool, int) {
 // Middleware Gin para Rate Limiting (Issue #2)
 func (r *RedisRateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Ignorar OPTIONS (CORS preflight) y rutas de sistema
+		path := c.Request.URL.Path
+		if c.Request.Method == "OPTIONS" || path == "/healthz" || path == "/metrics" || strings.HasPrefix(path, "/api/v1/admin") {
+			c.Next()
+			return
+		}
+
 		tenantID := c.GetHeader("X-Tenant-ID")
 		if tenantID == "" {
 			tenantID = c.ClientIP()

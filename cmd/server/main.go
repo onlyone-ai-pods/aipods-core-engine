@@ -17,7 +17,17 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/security"
 	"github.com/martinllanos/only-ai-pods/internal/telemetry"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
+	"github.com/martinllanos/only-ai-pods/internal/vault"
 )
+
+type StoreSecretRequest struct {
+	KeyName     string `json:"key_name" binding:"required"`
+	SecretValue string `json:"secret_value" binding:"required"`
+}
+
+type RevealSecretRequest struct {
+	KeyName string `json:"key_name" binding:"required"`
+}
 
 type PaymentWebhookRequest struct {
 	TenantID      string  `json:"tenant_id" binding:"required"`
@@ -194,13 +204,14 @@ func main() {
 	r.Use(CORSMiddleware())
 
 	// Initialize Rate Limiter Middleware (Issue #2 / SPEC-CORE-07)
-	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 60)
+	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 300)
 	r.Use(rateLimiter.Middleware())
 
 	smartRouter := router.NewDynamicSmartRouter()
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	approvalStore := NewApprovalStore()
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
+	nativeVault, _ := vault.NewNativeVaultManager("aipods_enterprise_aes256_key_32b")
 
 	// Initialize RAG Engine Stack
 	vectorStore := rag.NewVectorStore("localhost:6333", "aipods_vectors")
@@ -211,7 +222,57 @@ func main() {
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
-			"version": "54.0.0",
+			"version": "56.0.0",
+		})
+	})
+
+	// Native Vault Endpoints (Issue #11 / SPEC-CORE-27)
+	r.GET("/api/v1/vault/secrets", func(c *gin.Context) {
+		secrets := nativeVault.ListSecrets()
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "OK",
+			"secrets": secrets,
+		})
+	})
+
+	r.POST("/api/v1/vault/secrets", func(c *gin.Context) {
+		var req StoreSecretRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		item, err := nativeVault.StoreSecret(req.KeyName, req.SecretValue)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "STORED_ENCRYPTED",
+			"secret":  item,
+			"message": "Secreto cifrado exitosamente en reposo con AES-256-GCM (SPEC-CORE-27).",
+		})
+	})
+
+	r.POST("/api/v1/vault/reveal", func(c *gin.Context) {
+		var req RevealSecretRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		plainText, err := nativeVault.RevealSecret(req.KeyName)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":     "REVEALED_EPHMERAL",
+			"key_name":   req.KeyName,
+			"plain_text": plainText,
+			"message":    "Secreto descifrado efímeramente en memoria RAM.",
 		})
 	})
 
@@ -265,6 +326,15 @@ func main() {
 			"avg_latency_ms":     12.4,
 			"active_pods_count":  3,
 			"rate_limit_blocked": 0,
+		})
+	})
+
+	// Feedback Status GET Endpoint for Browser Inspection
+	r.GET("/api/v1/feedback", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ACTIVE",
+			"endpoint": "POST /api/v1/feedback",
+			"message": "Endpoint de purga reactiva de caché Redis por feedback 👎. Envíe peticiones POST con { type: 'down', query: '...' }",
 		})
 	})
 

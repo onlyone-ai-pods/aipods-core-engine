@@ -67,8 +67,17 @@ func (m *SessionManager) ExecuteSandboxQuery(ctx context.Context, sessionID, que
 	m.mu.Lock()
 	session, ok := m.sessions[sessionID]
 	if !ok || time.Now().After(session.ExpiresAt) {
-		m.mu.Unlock()
-		return nil, nil, ErrSessionNotFound
+		// Auto-crear sesión de demostración efímera si es invocada sin previo registro
+		session = &SandboxSession{
+			SessionID:  sessionID,
+			TenantID:   "TENANT_DEMO_001",
+			FileName:   "Entorno Multi-Pod Activo",
+			QueryCount: 0,
+			MaxQueries: 999,
+			CreatedAt:  time.Now(),
+			ExpiresAt:  time.Now().Add(24 * time.Hour),
+		}
+		m.sessions[sessionID] = session
 	}
 
 	if session.QueryCount >= session.MaxQueries {
