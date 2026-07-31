@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/martinllanos/only-ai-pods/internal/audit"
 	"github.com/martinllanos/only-ai-pods/internal/billing"
 	"github.com/martinllanos/only-ai-pods/internal/rag"
 	"github.com/martinllanos/only-ai-pods/internal/router"
@@ -274,6 +275,19 @@ func main() {
 			"plain_text": plainText,
 			"message":    "Secreto descifrado efímeramente en memoria RAM.",
 		})
+	})
+
+	dossierGenerator := audit.NewDossierGenerator()
+
+	// ISO 9001 & SOC 2 Type II Dossier Endpoint (Issue #9 / SPEC-CORE-32)
+	r.GET("/api/v1/admin/audit/dossier", func(c *gin.Context) {
+		tenantID := c.Query("tenant_id")
+		dossier, err := dossierGenerator.GenerateDossier(tenantID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, dossier)
 	})
 
 	// Odoo Billing Subscription GET Endpoint (Issue #8 / SPEC-CORE-26)
