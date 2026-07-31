@@ -13,6 +13,7 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/audit"
 	"github.com/martinllanos/only-ai-pods/internal/billing"
 	"github.com/martinllanos/only-ai-pods/internal/rag"
+	"github.com/martinllanos/only-ai-pods/internal/resilience"
 	"github.com/martinllanos/only-ai-pods/internal/router"
 	"github.com/martinllanos/only-ai-pods/internal/sandbox"
 	"github.com/martinllanos/only-ai-pods/internal/security"
@@ -20,6 +21,17 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
 	"github.com/martinllanos/only-ai-pods/internal/vault"
 )
+
+type StartSagaRequest struct {
+	TenantID   string `json:"tenant_id"`
+	ActionName string `json:"action_name" binding:"required"`
+	IsCritical bool   `json:"is_critical"`
+}
+
+type VerifyOTPRequest struct {
+	SagaID  string `json:"saga_id" binding:"required"`
+	OTPCode string `json:"otp_code" binding:"required"`
+}
 
 type SwarmExecuteRequest struct {
 	TenantID   string   `json:"tenant_id"`
@@ -255,6 +267,41 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, swarmRes)
+	})
+
+	sagaOrchestrator := resilience.NewSagaOrchestrator()
+
+	// Saga Pattern Enterprise Resilience Endpoints (Issue #13 / SPEC-CORE-35)
+	r.POST("/api/v1/saga/start", func(c *gin.Context) {
+		var req StartSagaRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		tenantID := req.TenantID
+		if tenantID == "" {
+			tenantID = "TENANT_DEMO_001"
+		}
+		tx, err := sagaOrchestrator.StartSaga(tenantID, req.ActionName, req.IsCritical)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, tx)
+	})
+
+	r.POST("/api/v1/saga/verify-otp", func(c *gin.Context) {
+		var req VerifyOTPRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		tx, err := sagaOrchestrator.VerifyOTPAndExecute(req.SagaID, req.OTPCode)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error(), "transaction": tx})
+			return
+		}
+		c.JSON(http.StatusOK, tx)
 	})
 
 	// Native Vault Endpoints (Issue #11 / SPEC-CORE-27)
