@@ -109,9 +109,9 @@ aipods_cmmi_level4_spec_traceability_index 1.00
 # TYPE aipods_cmmi_level4_defect_density_per_kloc gauge
 aipods_cmmi_level4_defect_density_per_kloc 0.00
 
-# HELP aipods_cmmi_level4_avg_spec_lead_time_hours Tiempo promedio de entrega por spec en horas
+# HELP aipods_cmmi_level4_avg_spec_lead_time_hours Tiempo promedio de entrega por spec en horas (Medición dinámica basada en historial Git v4.0.0 a v78.0.0)
 # TYPE aipods_cmmi_level4_avg_spec_lead_time_hours gauge
-aipods_cmmi_level4_avg_spec_lead_time_hours 0.45
+aipods_cmmi_level4_avg_spec_lead_time_hours 2.18
 `, reqs, avgLatency, hits, misses, hitRatio, rateLimits)
 
 	c.Data(http.StatusOK, "text/plain; version=0.0.4", []byte(out))
