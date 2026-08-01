@@ -1,0 +1,9 @@
+# AI PODS ENTERPRISE SAAS — CLAUDE AGENT RULES
+
+MANDATORY INSTRUCTIONS FOR CLAUDE CODE & AGENTIC TOOLS:
+
+1. ALWAYS read .aipods/skills/ before proposing any change.
+2. ALWAYS verify that a GitHub Issue exists with mandatory labels (e.g. gh issue create --label "feature,needs-spec").
+3. ALWAYS follow Spec-Driven Development (SDD): no code without a spec in specs/active/ or consolidated in specs/0X_*_MASTER_SPEC.md.
+4. NEVER hardcode absolute local paths (e.g. /home/martin/...). Always use portable relative paths.
+5. ALWAYS run bash scripts/deploy_stack.sh to verify Quality & Security Gates before completing work.
