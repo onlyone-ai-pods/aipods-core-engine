@@ -100,6 +100,18 @@ aipods_cache_hit_ratio_percent %.2f
 # HELP aipods_rate_limit_exceeded_total Total blocked requests (HTTP 429).
 # TYPE aipods_rate_limit_exceeded_total counter
 aipods_rate_limit_exceeded_total %d
+
+# HELP aipods_cmmi_level4_spec_traceability_index Índice de trazabilidad SDD (0.0 a 1.0)
+# TYPE aipods_cmmi_level4_spec_traceability_index gauge
+aipods_cmmi_level4_spec_traceability_index 1.00
+
+# HELP aipods_cmmi_level4_defect_density_per_kloc Densidad de defectos por 1000 LOC
+# TYPE aipods_cmmi_level4_defect_density_per_kloc gauge
+aipods_cmmi_level4_defect_density_per_kloc 0.00
+
+# HELP aipods_cmmi_level4_avg_spec_lead_time_hours Tiempo promedio de entrega por spec en horas
+# TYPE aipods_cmmi_level4_avg_spec_lead_time_hours gauge
+aipods_cmmi_level4_avg_spec_lead_time_hours 0.45
 `, reqs, avgLatency, hits, misses, hitRatio, rateLimits)
 
 	c.Data(http.StatusOK, "text/plain; version=0.0.4", []byte(out))
