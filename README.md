@@ -4,11 +4,11 @@
 
 # ⚙️ AI Pods Enterprise (SaaS) - Backend Engine (`aipods-core-engine`)
 
-Este repositorio contiene el motor backend en **Golang 1.22+**, microservicios de orquestación, Smart Router, evaluador multi-tenant y la pila de desarrollo local de **AI Pods Enterprise SaaS Platform**.
+Este repositorio contiene el motor backend en **Golang 1.26**, microservicios de orquestación, Smart Router, evaluador multi-tenant y la pila de desarrollo local de **AI Pods Enterprise SaaS Platform**.
 
 ## 🛠️ Tecnologías del Backend
 
-* **Golang 1.22+:** Runtime principal y servidor HTTP Gin.
+* **Golang 1.26:** Runtime principal y servidor HTTP Gin.
 * **Smart Router:** Clasificador de intenciones entre AI Pods.
 * **Aislamiento Multi-Tenant:** Inyección de `tenant_id` obligatorio en contexto de Go.
 * **PostgreSQL 16 Enterprise:** Base de datos relacional y particionada por tenant.

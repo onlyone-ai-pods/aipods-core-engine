@@ -1,11 +1,11 @@
 ---
 name: core-go-architect
-description: Guía experta de arquitectura en Go 1.22+ para el motor backend de AI Pods Enterprise.
+description: Guía experta de arquitectura en Go 1.26 para el motor backend de AI Pods Enterprise.
 ---
 
 # 🚀 Skill: Core Go Architect
 
-Esta habilidad instruye a asistentes de IA para desarrollar el backend del proyecto `aipods-core-engine` en **Golang 1.22+**:
+Esta habilidad instruye a asistentes de IA para desarrollar el backend del proyecto `aipods-core-engine` en **Golang 1.26**:
 
 ## 1. Trazabilidad Estricta & Criterios de Aceptación SDD (Pre-Code Gate)
 Antes de escribir cualquier código Go, consultar la especificación ejecutable en `specs/`. 
@@ -28,6 +28,6 @@ go test -v ./...
 Si se detecta cualquier vulnerabilidad o advertencia, DEBE corregirse de inmediato.
 
 ## 4. Reglas de Codificación en Go
-- **Rendimiento Sub-Milisegundo:** Código idiomático en Go 1.22+ sin dependencias frágiles.
+- **Rendimiento Sub-Milisegundo:** Código idiomático en Go 1.26 sin dependencias frágiles.
 - **Manejo Estricto de Errores:** NUNCA ignorar errores devueltos (`if err != nil`). Retornar o envolver errores con contexto mediante `fmt.Errorf("contexto: %w", err)`.
 - **Cierre Seguro de Recursos:** Garantizar `defer file.Close()`, `defer resp.Body.Close()`.
