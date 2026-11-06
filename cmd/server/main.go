@@ -245,16 +245,22 @@ func main() {
 		log.Fatalf("vault: failed to initialize native vault: %v", err)
 	}
 
-	// Initialize RAG Engine Stack
-	vectorStore := rag.NewVectorStore("localhost:6333", "aipods_vectors")
+	// Initialize LLM + RAG from the environment (SPEC-CORE-66)
+	ai := buildAIStack(os.Getenv)
 	semanticCache := rag.NewSemanticCacheManager("localhost:6379", 1*time.Hour)
-	ragService := rag.NewRAGIngestionService(vectorStore, semanticCache)
+	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
+	smartRouter.SetRetriever(ragService)
+	if ai.llm != nil {
+		smartRouter.SetLLM(ai.llm)
+	}
 
 	// Healthcheck Endpoint
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"version": "60.0.0",
+			"status":       "healthy",
+			"version":      "60.0.0",
+			"llm":          ai.llmMode,
+			"vector_store": ai.store.Name(),
 		})
 	})
 
