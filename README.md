@@ -28,7 +28,7 @@ go mod tidy
 go test -v ./...
 
 # 3. Compilar y ejecutar el servidor en Go
-go run cmd/server/main.go
+go run ./cmd/server
 ```
 
 ---

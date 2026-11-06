@@ -17,7 +17,7 @@ build/
 *.dylib
 *.test
 *.out
-server
+/server
 
 # IDE & OS files
 .DS_Store
