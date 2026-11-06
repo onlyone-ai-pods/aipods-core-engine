@@ -5,10 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/martinllanos/only-ai-pods/internal/llm"
+	"github.com/martinllanos/only-ai-pods/internal/rag"
 
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 	"github.com/martinllanos/only-ai-pods/internal/pod/afip"
@@ -45,7 +50,7 @@ func NewHTTPSidecarAdapter(config DynamicPodConfig) *HTTPSidecarAdapter {
 	}
 }
 
-func (h *HTTPSidecarAdapter) ID() string { return h.config.PodID }
+func (h *HTTPSidecarAdapter) ID() string   { return h.config.PodID }
 func (h *HTTPSidecarAdapter) Name() string { return h.config.Name }
 
 func (h *HTTPSidecarAdapter) ProcessQuery(ctx context.Context, tenantID string, query string, dryRun bool) (*pod.PodResponse, error) {
@@ -83,12 +88,21 @@ func (h *HTTPSidecarAdapter) ProcessQuery(ctx context.Context, tenantID string, 
 	return &podResp, nil
 }
 
+// Retriever returns the tenant's relevant document chunks (implemented by rag.RAGIngestionService).
+type Retriever interface {
+	Search(ctx context.Context, query string, topK int) ([]rag.SearchResult, error)
+}
+
 // DynamicSmartRouter manages both static compiled Core Pods and dynamically registered HTTP/DB Pods
 type DynamicSmartRouter struct {
 	mu           sync.RWMutex
 	staticPods   map[string]pod.BaseAIPod
 	dynamicPods  map[string]DynamicPodConfig
 	httpAdapters map[string]*HTTPSidecarAdapter
+
+	// Optional real LLM + RAG (SPEC-CORE-66). Nil means prototype mode.
+	llm       llm.Client
+	retriever Retriever
 }
 
 func NewDynamicSmartRouter() *DynamicSmartRouter {
@@ -114,6 +128,20 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 	return r
 }
 
+// SetLLM enables LLM routing and answer drafting. Pass nil to disable.
+func (r *DynamicSmartRouter) SetLLM(c llm.Client) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.llm = c
+}
+
+// SetRetriever enables RAG context for drafted answers.
+func (r *DynamicSmartRouter) SetRetriever(ret Retriever) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.retriever = ret
+}
+
 func (r *DynamicSmartRouter) RegisterStaticPod(p pod.BaseAIPod) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -128,10 +156,59 @@ func (r *DynamicSmartRouter) RegisterDynamicPod(config DynamicPodConfig) {
 	r.httpAdapters[config.PodID] = NewHTTPSidecarAdapter(config)
 }
 
+// RouteAndExecute picks a pod, runs it and, when an LLM is configured, drafts
+// the final answer from the pod result and the tenant's documents.
 func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, query string, dryRun bool) (*pod.PodResponse, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	client, retriever := r.llm, r.retriever
+	target := r.selectPod(ctx, client, tenantID, query)
+	r.mu.RUnlock()
 
+	res, err := target.ProcessQuery(ctx, tenantID, query, dryRun)
+	if err != nil || client == nil || res == nil {
+		return res, err
+	}
+	return r.draftAnswer(ctx, client, retriever, tenantID, query, res), nil
+}
+
+// selectPod must be called with r.mu held for reading.
+func (r *DynamicSmartRouter) selectPod(ctx context.Context, client llm.Client, tenantID, query string) pod.BaseAIPod {
+	if client != nil {
+		options, lookup := r.candidates(tenantID)
+		id, err := llm.Classify(ctx, client, query, options)
+		if err == nil {
+			return lookup[id]
+		}
+		log.Printf("[router] LLM classification failed, using keywords: %v", err)
+	}
+	return r.selectByKeyword(tenantID, query)
+}
+
+// candidates lists the pods this tenant can reach, sorted for a stable prompt.
+func (r *DynamicSmartRouter) candidates(tenantID string) ([]llm.Option, map[string]pod.BaseAIPod) {
+	lookup := make(map[string]pod.BaseAIPod)
+	var options []llm.Option
+	for id, p := range r.staticPods {
+		lookup[id] = p
+		options = append(options, llm.Option{ID: id, Description: p.Name()})
+	}
+	for id, cfg := range r.dynamicPods {
+		if cfg.TenantID != "GLOBAL" && cfg.TenantID != tenantID {
+			continue
+		}
+		lookup[id] = r.httpAdapters[id]
+		desc := cfg.Name
+		if len(cfg.Keywords) > 0 {
+			desc += " (temas: " + strings.Join(cfg.Keywords, ", ") + ")"
+		}
+		options = append(options, llm.Option{ID: id, Description: desc})
+	}
+	sort.Slice(options, func(i, j int) bool { return options[i].ID < options[j].ID })
+	return options, lookup
+}
+
+// selectByKeyword is the prototype router, kept as a fallback (SPEC-CORE-66.R2).
+func (r *DynamicSmartRouter) selectByKeyword(tenantID, query string) pod.BaseAIPod {
 	lowerQuery := strings.ToLower(query)
 
 	// 1. Check Dynamic Registered Pods (Database / Runtime Plugins)
@@ -141,31 +218,39 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 		}
 		for _, kw := range config.Keywords {
 			if strings.Contains(lowerQuery, strings.ToLower(kw)) {
-				adapter := r.httpAdapters[podID]
-				return adapter.ProcessQuery(ctx, tenantID, query, dryRun)
+				return r.httpAdapters[podID]
 			}
 		}
 	}
 
 	// 2. Check Static Compiled Core Pods
-	if strings.Contains(lowerQuery, "audio") || strings.Contains(lowerQuery, "video") || strings.Contains(lowerQuery, "transcribir") || strings.Contains(lowerQuery, "mp3") || strings.Contains(lowerQuery, "mp4") {
-		return r.staticPods["POD_MULTIMEDIA_WHISPER"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "gdrive") || strings.Contains(lowerQuery, "google drive") || strings.Contains(lowerQuery, "gdoc") {
-		return r.staticPods["POD_GDRIVE_SYNC"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "saldo") || strings.Contains(lowerQuery, "estado de cuenta") {
-		return r.staticPods["POD_CORE_BILLING_ODOO"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "auditoria") || strings.Contains(lowerQuery, "soc2") || strings.Contains(lowerQuery, "seguridad") {
-		return r.staticPods["POD_CORE_SECURITY_AUDIT"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "scm") || strings.Contains(lowerQuery, "wms") || strings.Contains(lowerQuery, "mrp") || strings.Contains(lowerQuery, "bom") || strings.Contains(lowerQuery, "landed") || strings.Contains(lowerQuery, "flete") {
-		return r.staticPods["POD_SCM_LOGISTICS"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "evocrm") || strings.Contains(lowerQuery, "helpdesk") || strings.Contains(lowerQuery, "whatsapp") || strings.Contains(lowerQuery, "ticket") {
-		return r.staticPods["POD_EVOCRM_HELPDESK"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "sap") || strings.Contains(lowerQuery, "s4hana") || strings.Contains(lowerQuery, "odata") || strings.Contains(lowerQuery, "b1") {
-		return r.staticPods["POD_SAP_ENTERPRISE"].ProcessQuery(ctx, tenantID, query, dryRun)
-	} else if strings.Contains(lowerQuery, "github") || strings.Contains(lowerQuery, "odoo.sh") || strings.Contains(lowerQuery, "repo") || strings.Contains(lowerQuery, "despliegue") {
-		return r.staticPods["POD_GITHUB_DEVOPS"].ProcessQuery(ctx, tenantID, query, dryRun)
+	containsAny := func(words ...string) bool {
+		for _, w := range words {
+			if strings.Contains(lowerQuery, w) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case containsAny("audio", "video", "transcribir", "mp3", "mp4"):
+		return r.staticPods["POD_MULTIMEDIA_WHISPER"]
+	case containsAny("gdrive", "google drive", "gdoc"):
+		return r.staticPods["POD_GDRIVE_SYNC"]
+	case containsAny("factura", "saldo", "estado de cuenta"):
+		return r.staticPods["POD_CORE_BILLING_ODOO"]
+	case containsAny("auditoria", "soc2", "seguridad"):
+		return r.staticPods["POD_CORE_SECURITY_AUDIT"]
+	case containsAny("scm", "wms", "mrp", "bom", "landed", "flete"):
+		return r.staticPods["POD_SCM_LOGISTICS"]
+	case containsAny("evocrm", "helpdesk", "whatsapp", "ticket"):
+		return r.staticPods["POD_EVOCRM_HELPDESK"]
+	case containsAny("sap", "s4hana", "odata", "b1"):
+		return r.staticPods["POD_SAP_ENTERPRISE"]
+	case containsAny("github", "odoo.sh", "repo", "despliegue"):
+		return r.staticPods["POD_GITHUB_DEVOPS"]
 	}
 
 	// Default Fallback Pod
-	return r.staticPods["POD_AFIP_FISCAL"].ProcessQuery(ctx, tenantID, query, dryRun)
+	return r.staticPods["POD_AFIP_FISCAL"]
 }

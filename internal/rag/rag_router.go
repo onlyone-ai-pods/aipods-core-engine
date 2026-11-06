@@ -12,11 +12,11 @@ type RAGIngestionService struct {
 	mdIngestor    *MarkdownIngestor
 	rstIngestor   *RSTIngestor
 	txtIngestor   *PlainTextIngestor
-	vectorStore   *VectorStore
+	vectorStore   Store
 	semanticCache *SemanticCacheManager
 }
 
-func NewRAGIngestionService(vectorStore *VectorStore, semanticCache *SemanticCacheManager) *RAGIngestionService {
+func NewRAGIngestionService(vectorStore Store, semanticCache *SemanticCacheManager) *RAGIngestionService {
 	return &RAGIngestionService{
 		pdfIngestor:   NewPDFIngestor(500, 50),
 		mdIngestor:    NewMarkdownIngestor(),
@@ -59,3 +59,11 @@ func (s *RAGIngestionService) IngestDocument(ctx context.Context, tenantID, file
 
 	return chunks, nil
 }
+
+// Search returns the tenant's most relevant chunks for a query.
+func (s *RAGIngestionService) Search(ctx context.Context, query string, topK int) ([]SearchResult, error) {
+	return s.vectorStore.SimilaritySearch(ctx, query, topK)
+}
+
+// StoreName reports which vector store backend is active.
+func (s *RAGIngestionService) StoreName() string { return s.vectorStore.Name() }
