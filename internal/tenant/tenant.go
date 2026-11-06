@@ -24,8 +24,3 @@ func FromContext(ctx context.Context) (string, error) {
 	}
 	return tenantID, nil
 }
-
-// BuildMultiTenantFilter returns SQL/Qdrant metadata filter invariant
-func BuildMultiTenantFilter(tenantID string) string {
-	return "WHERE (tenant_id = '" + tenantID + "' OR tenant_id = 'GLOBAL') AND status = 'ACTIVE'"
-}

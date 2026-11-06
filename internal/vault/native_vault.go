@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,8 +10,8 @@ import (
 	"fmt"
 
 	"io"
-	"sync"
-	"time"
+
+	"github.com/martinllanos/only-ai-pods/internal/store"
 )
 
 var (
@@ -18,40 +19,22 @@ var (
 	ErrInvalidMaster  = errors.New("invalid master key length for AES-256")
 )
 
-type VaultSecretItem struct {
-	KeyName     string    `json:"key_name"`
-	CipherText  string    `json:"cipher_text"`
-	MaskedValue string    `json:"masked_value"`
-	Algorithm   string    `json:"algorithm"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
+// NativeVaultManager encrypts secrets with AES-256-GCM and persists only the
+// cipher text, scoped by tenant (SPEC-CORE-27, SPEC-CORE-67.R8).
 type NativeVaultManager struct {
-	mu        sync.RWMutex
 	masterKey []byte
-	secrets   map[string]*VaultSecretItem
-	plainMap  map[string]string // En memoria RAM efímera para pruebas
+	store     store.Store
 }
 
-func NewNativeVaultManager(masterKeyHex string) (*NativeVaultManager, error) {
-	// Clave por defecto AES-256 de 32 bytes exactos
-	key := []byte("aipods_enterprise_aes256_key_32b")
-	if len(masterKeyHex) == 32 {
-		key = []byte(masterKeyHex)
+// NewNativeVaultManager requires an exact 32-byte key; there is no silent default.
+func NewNativeVaultManager(masterKey string, st store.Store) (*NativeVaultManager, error) {
+	if len(masterKey) != 32 {
+		return nil, ErrInvalidMaster
 	}
-
-	vm := &NativeVaultManager{
-		masterKey: key,
-		secrets:   make(map[string]*VaultSecretItem),
-		plainMap:  make(map[string]string),
+	if st == nil {
+		return nil, errors.New("vault: store is required")
 	}
-
-	// Cargar secretos mock iniciales cifrados con AES-256
-	_, _ = vm.StoreSecret("AFIP_ARCA_CERTIFICATE", "-----BEGIN CERTIFICATE-----\nMIIF...ARCA2026\n-----END CERTIFICATE-----")
-	_, _ = vm.StoreSecret("ODOO_ENTERPRISE_API_KEY", "odoo_live_api_9918237465012938")
-	_, _ = vm.StoreSecret("GITHUB_DEVOPS_PAT_TOKEN", "ghp_LiveProductionDevOpsToken2026")
-
-	return vm, nil
+	return &NativeVaultManager{masterKey: []byte(masterKey), store: st}, nil
 }
 
 // EncryptAES256GCM cifra un texto plano utilizando AES-256-GCM y retorna Base64
@@ -112,56 +95,41 @@ func (v *NativeVaultManager) DecryptAES256GCM(cipherStr string) (string, error) 
 	return string(plainBytes), nil
 }
 
-// StoreSecret cifra y almacena un nuevo secreto
-func (v *NativeVaultManager) StoreSecret(keyName, plainText string) (*VaultSecretItem, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
+// StoreSecret encrypts and stores (or replaces) a tenant secret.
+func (v *NativeVaultManager) StoreSecret(ctx context.Context, tenantID, keyName, plainText string) (store.Secret, error) {
+	if tenantID == "" || keyName == "" {
+		return store.Secret{}, errors.New("vault: tenant_id and key_name are required")
+	}
 	cipherText, err := v.EncryptAES256GCM(plainText)
 	if err != nil {
-		return nil, err
+		return store.Secret{}, err
 	}
-
 	masked := "••••••••••••"
-	if len(plainText) > 4 {
-		masked = fmt.Sprintf("••••••••••••%s", plainText[len(plainText)-4:])
+	if r := []rune(plainText); len(r) > 8 {
+		masked = "••••••••••••" + string(r[len(r)-4:])
 	}
-
-	item := &VaultSecretItem{
+	return v.store.PutSecret(ctx, store.Secret{
+		TenantID:    tenantID,
 		KeyName:     keyName,
 		CipherText:  cipherText,
 		MaskedValue: masked,
 		Algorithm:   "AES-256-GCM",
-		CreatedAt:   time.Now(),
-	}
-
-	v.secrets[keyName] = item
-	v.plainMap[keyName] = plainText
-	return item, nil
+	})
 }
 
-// ListSecrets lista todos los secretos enmascarados (sin revelar plano)
-func (v *NativeVaultManager) ListSecrets() []*VaultSecretItem {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-
-	list := make([]*VaultSecretItem, 0, len(v.secrets))
-	for _, item := range v.secrets {
-		list = append(list, item)
-	}
-	return list
+// ListSecrets returns the tenant's secrets masked, never in clear.
+func (v *NativeVaultManager) ListSecrets(ctx context.Context, tenantID string) ([]store.Secret, error) {
+	return v.store.ListSecrets(ctx, tenantID)
 }
 
-// RevealSecret descifra el valor efímero en memoria RAM
-func (v *NativeVaultManager) RevealSecret(keyName string) (string, error) {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-
-	item, exists := v.secrets[keyName]
-	if !exists {
+// RevealSecret decrypts one tenant secret on demand.
+func (v *NativeVaultManager) RevealSecret(ctx context.Context, tenantID, keyName string) (string, error) {
+	item, err := v.store.GetSecret(ctx, tenantID, keyName)
+	if errors.Is(err, store.ErrNotFound) {
 		return "", ErrSecretNotFound
 	}
-
-	// Decrypt on demand
+	if err != nil {
+		return "", err
+	}
 	return v.DecryptAES256GCM(item.CipherText)
 }
