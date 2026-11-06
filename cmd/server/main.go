@@ -1,23 +1,26 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/martinllanos/only-ai-pods/internal/audit"
+	"github.com/martinllanos/only-ai-pods/internal/auth"
 	"github.com/martinllanos/only-ai-pods/internal/billing"
 	"github.com/martinllanos/only-ai-pods/internal/rag"
 	"github.com/martinllanos/only-ai-pods/internal/resilience"
 	"github.com/martinllanos/only-ai-pods/internal/router"
 	"github.com/martinllanos/only-ai-pods/internal/sandbox"
 	"github.com/martinllanos/only-ai-pods/internal/security"
+	"github.com/martinllanos/only-ai-pods/internal/store"
 	"github.com/martinllanos/only-ai-pods/internal/telemetry"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
 	"github.com/martinllanos/only-ai-pods/internal/vault"
@@ -42,12 +45,14 @@ type SwarmExecuteRequest struct {
 }
 
 type StoreSecretRequest struct {
+	TenantID    string `json:"tenant_id"`
 	KeyName     string `json:"key_name" binding:"required"`
 	SecretValue string `json:"secret_value" binding:"required"`
 }
 
 type RevealSecretRequest struct {
-	KeyName string `json:"key_name" binding:"required"`
+	TenantID string `json:"tenant_id"`
+	KeyName  string `json:"key_name" binding:"required"`
 }
 
 type PaymentWebhookRequest struct {
@@ -66,7 +71,7 @@ type FeedbackRequest struct {
 }
 
 type ChatRequest struct {
-	TenantID string `json:"tenant_id" binding:"required"`
+	TenantID string `json:"tenant_id"`
 	Message  string `json:"message" binding:"required"`
 	DryRun   *bool  `json:"dry_run,omitempty"`
 }
@@ -80,104 +85,44 @@ type SandboxQueryRequest struct {
 	Message   string `json:"message" binding:"required"`
 }
 
-type ApprovalItem struct {
-	Token           string    `json:"token"`
-	PodID           string    `json:"pod_id"`
-	ActionName      string    `json:"action_name"`
-	Summary         string    `json:"summary"`
-	Command         string    `json:"command"`
-	TenantID        string    `json:"tenant_id"`
-	Status          string    `json:"status"` // PENDING, APPROVED, REJECTED
-	ExecutionResult string    `json:"execution_result,omitempty"`
-	RequestedAt     time.Time `json:"requested_at"`
-}
-
 type ApprovalActionRequest struct {
 	Token  string `json:"token" binding:"required"`
 	Action string `json:"action" binding:"required"` // approve or reject
 }
 
-// In-Memory Approval Store
-type ApprovalStore struct {
-	mu    sync.RWMutex
-	items map[string]*ApprovalItem
-}
+// simulatedExecutionResult is the canned output shown after approving an ARCA
+// points-of-sale action. The pods still do not execute against ARCA.
+func simulatedExecutionResult(command, summary string) string {
+	cmdLower := strings.ToLower(command + " " + summary)
+	var resultOutput string
 
-func NewApprovalStore() *ApprovalStore {
-	store := &ApprovalStore{items: make(map[string]*ApprovalItem)}
-
-	// Pre-populate mock initial approvals for rich admin UI experience
-	store.items["dryrun_token_sha256_mock99120"] = &ApprovalItem{
-		Token:       "dryrun_token_sha256_mock99120",
-		PodID:       "POD_AFIP_FISCAL",
-		ActionName:  "gestionar_puntos_de_venta_arca",
-		Summary:     "Simulación de consulta de Puntos de Venta en ARCA (Administración de PV y Domicilios).",
-		Command:     "node scripts/puntos_de_venta_arca.js --accion=Consultar --cuit=20262534538",
-		TenantID:    "TENANT_DEMO_001",
-		Status:      "PENDING",
-		RequestedAt: time.Now().Add(-5 * time.Minute),
-	}
-
-	return store
-}
-
-func (s *ApprovalStore) Add(item *ApprovalItem) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.items[item.Token] = item
-}
-
-func (s *ApprovalStore) List() []*ApprovalItem {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	list := make([]*ApprovalItem, 0, len(s.items))
-	for _, item := range s.items {
-		list = append(list, item)
-	}
-	return list
-}
-
-func (s *ApprovalStore) ProcessAction(token, action string) (bool, string, string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	item, ok := s.items[token]
-	if !ok {
-		return false, "Token no encontrado", ""
-	}
-
-	if action == "approve" {
-		item.Status = "APPROVED"
-
-		cmdLower := strings.ToLower(item.Command + " " + item.Summary)
-		var resultOutput string
-
-		if strings.Contains(cmdLower, "odoo") {
-			resultOutput = `📍 PUNTOS DE VENTA ARCA (FILTRO: Odoo)
+	if strings.Contains(cmdLower, "odoo") {
+		resultOutput = `📍 PUNTOS DE VENTA ARCA (FILTRO: Odoo)
 --------------------------------------------------------------------------------
 PV N° 00007 | Tipo: Factura Electrónica - Odoo Production   | Estado: ACTIVO
 --------------------------------------------------------------------------------
 Coincidencias encontradas: 1 (Verificado en ARCA/AFIP)`
-		} else if strings.Contains(cmdLower, "rece") || strings.Contains(cmdLower, "web service") {
-			resultOutput = `📍 PUNTOS DE VENTA ARCA (FILTRO: RECE)
+	} else if strings.Contains(cmdLower, "rece") || strings.Contains(cmdLower, "web service") {
+		resultOutput = `📍 PUNTOS DE VENTA ARCA (FILTRO: RECE)
 --------------------------------------------------------------------------------
 PV N° 00002 | Tipo: RECE para aplicativo y/o Web Services   | Estado: ACTIVO
 --------------------------------------------------------------------------------
 Coincidencias encontradas: 1 (Verificado en ARCA/AFIP)`
-		} else if strings.Contains(cmdLower, "linea") {
-			resultOutput = `📍 PUNTOS DE VENTA ARCA (FILTRO: Comprobantes en Línea)
+	} else if strings.Contains(cmdLower, "linea") {
+		resultOutput = `📍 PUNTOS DE VENTA ARCA (FILTRO: Comprobantes en Línea)
 --------------------------------------------------------------------------------
 PV N° 00001 | Tipo: Comprobantes en Línea - Mercado Interno | Estado: ACTIVO
 --------------------------------------------------------------------------------
 Coincidencias encontradas: 1 (Verificado en ARCA/AFIP)`
-		} else if strings.Contains(cmdLower, "inactivo") || strings.Contains(cmdLower, "baja") {
-			resultOutput = `📍 PUNTOS DE VENTA INACTIVOS / DADOS DE BAJA EN ARCA
+	} else if strings.Contains(cmdLower, "inactivo") || strings.Contains(cmdLower, "baja") {
+		resultOutput = `📍 PUNTOS DE VENTA INACTIVOS / DADOS DE BAJA EN ARCA
 --------------------------------------------------------------------------------
 PV N° 00003 | Tipo: FactuWeb Histórico (Deprecado 2021)    | Estado: DADO DE BAJA
 PV N° 00005 | Tipo: Controlador Fiscal Sucursal Belgrano   | Estado: INACTIVO
 --------------------------------------------------------------------------------
 Coincidencias encontradas: 2 (Verificado en ARCA/AFIP)`
-		} else if strings.Contains(cmdLower, "todos") {
-			resultOutput = `📍 TODOS LOS PUNTOS DE VENTA REGISTRADOS EN ARCA
+	} else if strings.Contains(cmdLower, "todos") {
+		resultOutput = `📍 TODOS LOS PUNTOS DE VENTA REGISTRADOS EN ARCA
 --------------------------------------------------------------------------------
 PV N° 00001 | Tipo: Comprobantes en Línea - Mercado Interno | Estado: ACTIVO
 PV N° 00002 | Tipo: RECE para aplicativo y/o Web Services   | Estado: ACTIVO
@@ -186,23 +131,17 @@ PV N° 00005 | Tipo: Controlador Fiscal Sucursal Belgrano   | Estado: INACTIVO
 PV N° 00007 | Tipo: Factura Electrónica - Odoo Production   | Estado: ACTIVO
 --------------------------------------------------------------------------------
 Total Puntos de Venta Registrados: 5 (Verificado en ARCA/AFIP)`
-		} else {
-			resultOutput = `📍 PUNTOS DE VENTA ACTIVOS EN ARCA (CUIT 20262534538)
+	} else {
+		resultOutput = `📍 PUNTOS DE VENTA ACTIVOS EN ARCA (CUIT 20262534538)
 --------------------------------------------------------------------------------
 PV N° 00001 | Tipo: Comprobantes en Línea - Mercado Interno | Estado: ACTIVO
 PV N° 00002 | Tipo: RECE para aplicativo y/o Web Services   | Estado: ACTIVO
 PV N° 00007 | Tipo: Factura Electrónica - Odoo Production   | Estado: ACTIVO
 --------------------------------------------------------------------------------
 Total Puntos de Venta Activos: 3 (Verificado en ARCA/AFIP)`
-		}
-
-		item.ExecutionResult = resultOutput
-		return true, "Solicitud aprobada y ejecutada en tiempo real por el AI Pod", resultOutput
-	} else if action == "reject" {
-		item.Status = "REJECTED"
-		return true, "Solicitud de ejecución rechazada", ""
 	}
-	return false, "Acción no válida", ""
+
+	return resultOutput
 }
 
 func CORSMiddleware() gin.HandlerFunc {
@@ -221,8 +160,26 @@ func CORSMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+	ctx := context.Background()
 	r := gin.Default()
 	r.Use(CORSMiddleware())
+
+	// Persistence and authentication (SPEC-CORE-67)
+	st, err := buildStore(ctx, os.Getenv)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer st.Close()
+	guard, err := buildGuard(os.Getenv)
+	if err != nil {
+		log.Fatalf("auth: %v", err)
+	}
+	if err := bootstrapAdmin(ctx, st, os.Getenv); err != nil {
+		log.Fatalf("auth: bootstrap admin: %v", err)
+	}
+	auditLog := auditor{st: st, guard: guard}
+	r.Use(guard.Authenticate())
+	registerAuthRoutes(r, st, guard, auditLog)
 
 	// Initialize Rate Limiter Middleware (Issue #2 / SPEC-CORE-07)
 	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 300)
@@ -231,7 +188,6 @@ func main() {
 	smartRouter := router.NewDynamicSmartRouter()
 	swarmOrchestrator := router.NewSwarmOrchestrator(smartRouter)
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
-	approvalStore := NewApprovalStore()
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
 	vaultKey, usedDevKey, err := resolveVaultMasterKey(os.Getenv("VAULT_MASTER_KEY"), os.Getenv("ENVIRONMENT"))
 	if err != nil {
@@ -240,7 +196,7 @@ func main() {
 	if usedDevKey {
 		log.Println("WARNING: VAULT_MASTER_KEY not set; using insecure development vault key")
 	}
-	nativeVault, err := vault.NewNativeVaultManager(vaultKey)
+	nativeVault, err := vault.NewNativeVaultManager(vaultKey, st)
 	if err != nil {
 		log.Fatalf("vault: failed to initialize native vault: %v", err)
 	}
@@ -261,6 +217,8 @@ func main() {
 			"version":      "60.0.0",
 			"llm":          ai.llmMode,
 			"vector_store": ai.store.Name(),
+			"database":     databaseStatus(c.Request.Context(), st),
+			"auth_mode":    guard.Mode,
 		})
 	})
 
@@ -272,9 +230,9 @@ func main() {
 			return
 		}
 
-		tenantID := req.TenantID
-		if tenantID == "" {
-			tenantID = "TENANT_DEMO_001"
+		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "TENANT_DEMO_001", false)
+		if !ok {
+			return
 		}
 
 		swarmRes, err := swarmOrchestrator.ExecuteSwarm(c.Request.Context(), tenantID, req.Query, req.TargetPods, req.DryRun)
@@ -295,9 +253,9 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		tenantID := req.TenantID
-		if tenantID == "" {
-			tenantID = "TENANT_DEMO_001"
+		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "TENANT_DEMO_001", false)
+		if !ok {
+			return
 		}
 		tx, err := sagaOrchestrator.StartSaga(tenantID, req.ActionName, req.IsCritical)
 		if err != nil {
@@ -322,22 +280,36 @@ func main() {
 	})
 
 	// Native Vault Endpoints (Issue #11 / SPEC-CORE-27)
-	r.GET("/api/v1/vault/secrets", func(c *gin.Context) {
-		secrets := nativeVault.ListSecrets()
+	vaultRoles := guard.RequireRoles(auth.RoleTenantAdmin, auth.RolePlatformAdmin)
+	r.GET("/api/v1/vault/secrets", vaultRoles, func(c *gin.Context) {
+		tenantID, ok := guard.ResolveTenant(c, c.Query("tenant_id"), "GLOBAL", false)
+		if !ok {
+			return
+		}
+		secrets, err := nativeVault.ListSecrets(c.Request.Context(), tenantID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "OK",
 			"secrets": secrets,
 		})
 	})
 
-	r.POST("/api/v1/vault/secrets", func(c *gin.Context) {
+	r.POST("/api/v1/vault/secrets", vaultRoles, func(c *gin.Context) {
 		var req StoreSecretRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		item, err := nativeVault.StoreSecret(req.KeyName, req.SecretValue)
+		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "GLOBAL", false)
+		if !ok {
+			return
+		}
+		item, err := nativeVault.StoreSecret(c.Request.Context(), tenantID, req.KeyName, req.SecretValue)
+		auditLog.record(c, tenantID, "vault.store", req.KeyName, outcome(err))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -350,14 +322,19 @@ func main() {
 		})
 	})
 
-	r.POST("/api/v1/vault/reveal", func(c *gin.Context) {
+	r.POST("/api/v1/vault/reveal", vaultRoles, func(c *gin.Context) {
 		var req RevealSecretRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		plainText, err := nativeVault.RevealSecret(req.KeyName)
+		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "GLOBAL", false)
+		if !ok {
+			return
+		}
+		plainText, err := nativeVault.RevealSecret(c.Request.Context(), tenantID, req.KeyName)
+		auditLog.record(c, tenantID, "vault.reveal", req.KeyName, outcome(err))
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -374,7 +351,8 @@ func main() {
 	dossierGenerator := audit.NewDossierGenerator()
 
 	// ISO 9001 & SOC 2 Type II Dossier Endpoint (Issue #9 / SPEC-CORE-32)
-	r.GET("/api/v1/admin/audit/dossier", func(c *gin.Context) {
+	adminRoles := guard.RequireRoles(auth.RoleAuditor, auth.RolePlatformAdmin)
+	r.GET("/api/v1/admin/audit/dossier", adminRoles, func(c *gin.Context) {
 		tenantID := c.Query("tenant_id")
 		dossier, err := dossierGenerator.GenerateDossier(tenantID)
 		if err != nil {
@@ -386,9 +364,9 @@ func main() {
 
 	// Odoo Billing Subscription GET Endpoint (Issue #8 / SPEC-CORE-26)
 	r.GET("/api/v1/billing/subscription", func(c *gin.Context) {
-		tenantID := c.Query("tenant_id")
-		if tenantID == "" {
-			tenantID = "TENANT_DEMO_001"
+		tenantID, ok := guard.ResolveTenant(c, c.Query("tenant_id"), "TENANT_DEMO_001", true)
+		if !ok {
+			return
 		}
 		sub, err := odooBilling.GetSubscription(c.Request.Context(), tenantID)
 		if err != nil {
@@ -399,7 +377,8 @@ func main() {
 	})
 
 	// Odoo Billing Payment Webhook Endpoint (Issue #8 / SPEC-CORE-26)
-	r.POST("/api/v1/billing/webhook", func(c *gin.Context) {
+	// Unsigned webhook: until Odoo signs it, only platform admins may call it.
+	r.POST("/api/v1/billing/webhook", guard.RequireRoles(auth.RolePlatformAdmin), func(c *gin.Context) {
 		var req PaymentWebhookRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -424,7 +403,7 @@ func main() {
 	r.GET("/metrics", metricsCollector.PrometheusExporterHandler)
 
 	// Admin Telemetry JSON Endpoint for Admin Review Hub
-	r.GET("/api/v1/admin/telemetry", func(c *gin.Context) {
+	r.GET("/api/v1/admin/telemetry", adminRoles, func(c *gin.Context) {
 		hits, misses, purged := semanticCache.Stats()
 		c.JSON(http.StatusOK, gin.H{
 			"status":             "OK",
@@ -454,9 +433,9 @@ func main() {
 			return
 		}
 
-		tenantID := req.TenantID
-		if tenantID == "" {
-			tenantID = "GLOBAL"
+		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "GLOBAL", false)
+		if !ok {
+			return
 		}
 
 		purged := false
@@ -476,9 +455,10 @@ func main() {
 
 	// RAG Document Ingestion Endpoint (Supports .pdf, .md, .rst, .txt)
 	r.POST("/api/v1/rag/ingest", func(c *gin.Context) {
-		tenantID := c.PostForm("tenant_id")
-		if tenantID == "" {
-			tenantID = "GLOBAL"
+		// GLOBAL documents are visible to every tenant: only platform admins write them when enforced.
+		tenantID, ok := guard.ResolveTenant(c, c.PostForm("tenant_id"), "GLOBAL", false)
+		if !ok {
+			return
 		}
 
 		fileHeader, err := c.FormFile("file")
@@ -516,14 +496,20 @@ func main() {
 	})
 
 	// Dynamic Pod Registration Endpoint
-	r.POST("/api/v1/pods/register", func(c *gin.Context) {
+	r.POST("/api/v1/pods/register", guard.RequireRoles(auth.RoleTenantAdmin, auth.RolePlatformAdmin), func(c *gin.Context) {
 		var config router.DynamicPodConfig
 		if err := c.ShouldBindJSON(&config); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
+		podTenant, ok := guard.ResolveTenant(c, config.TenantID, "GLOBAL", false)
+		if !ok {
+			return
+		}
+		config.TenantID = podTenant
 		smartRouter.RegisterDynamicPod(config)
+		auditLog.record(c, podTenant, "pod.register", config.PodID, "success")
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "REGISTERED",
@@ -570,16 +556,7 @@ func main() {
 
 		// Track DryRun approval item in Admin Store if produced
 		if res.DryRunResult != nil && res.DryRunResult.RequiresHumanApproval && res.DryRunResult.ApprovalToken != "" {
-			approvalStore.Add(&ApprovalItem{
-				Token:       res.DryRunResult.ApprovalToken,
-				PodID:       res.PodID,
-				ActionName:  res.DryRunResult.ActionName,
-				Summary:     res.DryRunResult.Summary,
-				Command:     res.DryRunResult.GeneratedCommand,
-				TenantID:    session.TenantID,
-				Status:      "PENDING",
-				RequestedAt: time.Now(),
-			})
+			recordApproval(c, st, res, session.TenantID)
 		}
 
 		c.JSON(http.StatusOK, gin.H{
@@ -601,32 +578,35 @@ func main() {
 			dryRun = *req.DryRun
 		}
 
-		ctx := tenant.WithTenantID(c.Request.Context(), req.TenantID)
-		res, err := smartRouter.RouteAndExecute(ctx, req.TenantID, req.Message, dryRun)
+		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "", false)
+		if !ok {
+			return
+		}
+		if tenantID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
+			return
+		}
+		ctx := tenant.WithTenantID(c.Request.Context(), tenantID)
+		res, err := smartRouter.RouteAndExecute(ctx, tenantID, req.Message, dryRun)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
 		if res.DryRunResult != nil && res.DryRunResult.RequiresHumanApproval && res.DryRunResult.ApprovalToken != "" {
-			approvalStore.Add(&ApprovalItem{
-				Token:       res.DryRunResult.ApprovalToken,
-				PodID:       res.PodID,
-				ActionName:  res.DryRunResult.ActionName,
-				Summary:     res.DryRunResult.Summary,
-				Command:     res.DryRunResult.GeneratedCommand,
-				TenantID:    req.TenantID,
-				Status:      "PENDING",
-				RequestedAt: time.Now(),
-			})
+			recordApproval(c, st, res, tenantID)
 		}
 
 		c.JSON(http.StatusOK, res)
 	})
 
 	// Admin Approvals List Endpoint
-	r.GET("/api/v1/admin/approvals", func(c *gin.Context) {
-		items := approvalStore.List()
+	r.GET("/api/v1/admin/approvals", adminRoles, func(c *gin.Context) {
+		items, err := st.ListApprovals(c.Request.Context(), c.Query("tenant_id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "OK",
 			"approvals": items,
@@ -634,18 +614,43 @@ func main() {
 	})
 
 	// Admin Approvals Action Endpoint (Approve / Reject)
-	r.POST("/api/v1/admin/approvals/action", func(c *gin.Context) {
+	r.POST("/api/v1/admin/approvals/action", adminRoles, func(c *gin.Context) {
 		var req ApprovalActionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		ok, msg, execResult := approvalStore.ProcessAction(req.Token, req.Action)
-		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		var status, msg, execResult string
+		switch req.Action {
+		case "approve":
+			current, err := st.GetApproval(c.Request.Context(), req.Token)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Token no encontrado"})
+				return
+			}
+			status, msg = "APPROVED", "Solicitud aprobada (ejecución simulada: el pod todavía no ejecuta contra ARCA)"
+			execResult = simulatedExecutionResult(current.Command, current.Summary)
+		case "reject":
+			status, msg = "REJECTED", "Solicitud de ejecución rechazada"
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Acción no válida"})
 			return
 		}
+
+		item, err := st.DecideApproval(c.Request.Context(), req.Token, status, execResult, guard.Actor(c))
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Token no encontrado"})
+			return
+		case errors.Is(err, store.ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "La solicitud ya fue resuelta", "status": item.Status})
+			return
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		auditLog.record(c, item.TenantID, "approval."+req.Action, req.Token, "success")
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":           "PROCESSED",

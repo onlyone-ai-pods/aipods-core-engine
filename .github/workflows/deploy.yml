@@ -11,6 +11,20 @@ jobs:
   quality-and-security-gate:
     name: 🛡️ Quality & Security Gate
     runs-on: ubuntu-latest
+    # Postgres for the store integration tests (SPEC-CORE-67)
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aipods
+          POSTGRES_PASSWORD: aipods
+          POSTGRES_DB: aipods_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aipods -d aipods_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://aipods:aipods@localhost:5432/aipods_test?sslmode=disable
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
