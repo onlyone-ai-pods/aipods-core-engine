@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -232,7 +233,17 @@ func main() {
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	approvalStore := NewApprovalStore()
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
-	nativeVault, _ := vault.NewNativeVaultManager("aipods_enterprise_aes256_key_32b")
+	vaultKey, usedDevKey, err := resolveVaultMasterKey(os.Getenv("VAULT_MASTER_KEY"), os.Getenv("ENVIRONMENT"))
+	if err != nil {
+		log.Fatalf("vault: %v", err)
+	}
+	if usedDevKey {
+		log.Println("WARNING: VAULT_MASTER_KEY not set; using insecure development vault key")
+	}
+	nativeVault, err := vault.NewNativeVaultManager(vaultKey)
+	if err != nil {
+		log.Fatalf("vault: failed to initialize native vault: %v", err)
+	}
 
 	// Initialize RAG Engine Stack
 	vectorStore := rag.NewVectorStore("localhost:6333", "aipods_vectors")
@@ -423,9 +434,9 @@ func main() {
 	// Feedback Status GET Endpoint for Browser Inspection
 	r.GET("/api/v1/feedback", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "ACTIVE",
+			"status":   "ACTIVE",
 			"endpoint": "POST /api/v1/feedback",
-			"message": "Endpoint de purga reactiva de caché Redis por feedback 👎. Envíe peticiones POST con { type: 'down', query: '...' }",
+			"message":  "Endpoint de purga reactiva de caché Redis por feedback 👎. Envíe peticiones POST con { type: 'down', query: '...' }",
 		})
 	})
 
@@ -449,7 +460,7 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":       "ACCEPTED",
+			"status":        "ACCEPTED",
 			"feedback_type": req.Type,
 			"reason":        req.Reason,
 			"cache_purged":  purged,
