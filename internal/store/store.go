@@ -46,6 +46,7 @@ type User struct {
 	PasswordHash string    `json:"-"`
 	Roles        []string  `json:"roles"`
 	Active       bool      `json:"active"`
+	TokenVersion int       `json:"-"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 

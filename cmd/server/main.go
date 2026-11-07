@@ -180,12 +180,12 @@ func main() {
 	if err := bootstrapAdmin(ctx, st, os.Getenv); err != nil {
 		log.Fatalf("auth: bootstrap admin: %v", err)
 	}
-	guard.UserActive = func(ctx context.Context, userID string) (bool, error) {
+	guard.UserState = func(ctx context.Context, userID string) (bool, int, error) {
 		u, err := st.GetUser(ctx, userID)
 		if errors.Is(err, store.ErrNotFound) {
-			return false, nil
+			return false, 0, nil
 		}
-		return err == nil && u.Active, err
+		return err == nil && u.Active, u.TokenVersion, err
 	}
 	auditLog := auditor{st: st, guard: guard}
 	r.Use(guard.Authenticate())

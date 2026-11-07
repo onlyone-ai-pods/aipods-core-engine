@@ -118,6 +118,7 @@ func (m *Memory) UpdateUserPassword(_ context.Context, id, passwordHash string) 
 		return ErrNotFound
 	}
 	u.PasswordHash = passwordHash
+	u.TokenVersion++
 	m.users[k] = u
 	return nil
 }

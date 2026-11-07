@@ -92,7 +92,25 @@ func registerUserRoutes(r *gin.Engine, st store.Store, guard *auth.Guard, audit 
 			return
 		}
 		audit.record(c, u.TenantID, "auth.password_change", u.Email, "success")
-		c.JSON(http.StatusOK, gin.H{"status": "OK"})
+		// The change revoked every token of this user, including the one in use
+		// (R15): hand back a fresh one so this session stays open.
+		u, err = st.GetUser(c.Request.Context(), u.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load user"})
+			return
+		}
+		token, exp, err := guard.Issuer.Issue(u.ID, u.Email, u.TenantID, u.Roles, u.TokenVersion)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not issue token"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "OK",
+			"access_token": token,
+			"token_type":   "Bearer",
+			"expires_at":   exp,
+			"user":         gin.H{"id": u.ID, "email": u.Email, "tenant_id": u.TenantID, "roles": u.Roles},
+		})
 	})
 
 	// List users (R12): platform_admin and auditor see every tenant, tenant_admin its own.
@@ -145,7 +163,7 @@ func registerUserRoutes(r *gin.Engine, st store.Store, guard *auth.Guard, audit 
 	}
 
 	// Activate or deactivate a user (R13). A deactivated user cannot log in
-	// and its open sessions stop working (Guard.UserActive).
+	// and its open sessions stop working (Guard.UserState).
 	r.PATCH("/api/v1/admin/users/:id", manage, func(c *gin.Context) {
 		if !requireEnforced(guard, c) {
 			return
