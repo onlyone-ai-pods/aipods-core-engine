@@ -15,6 +15,9 @@ var ErrNotFound = errors.New("store: not found")
 // ErrConflict is returned when a unique key already exists.
 var ErrConflict = errors.New("store: already exists")
 
+// ErrInvalid is returned when a value is not one of the allowed ones.
+var ErrInvalid = errors.New("store: invalid value")
+
 type Approval struct {
 	Token           string     `json:"token"`
 	PodID           string     `json:"pod_id"`
@@ -66,6 +69,12 @@ type AuditEvent struct {
 // all tenants; callers must only pass "" for cross-tenant roles.
 type Store interface {
 	EnsureTenant(ctx context.Context, id, name string) error
+	// GetRAGStrategy returns the tenant's RAG strategy (SPEC-CORE-70.R3), or
+	// ErrNotFound when the tenant has no row.
+	GetRAGStrategy(ctx context.Context, tenantID string) (string, error)
+	// SetRAGStrategy returns ErrInvalid for an unknown strategy and
+	// ErrNotFound for an unknown tenant.
+	SetRAGStrategy(ctx context.Context, tenantID, strategy string) error
 
 	CreateUser(ctx context.Context, u User) error
 	UserByEmail(ctx context.Context, email string) (User, error)

@@ -21,6 +21,7 @@ type MetricsCollector struct {
 	podRequests         int64
 	podDurationUs       int64
 	rateLimitsExceeded  int64
+	ragFallbacks        int64
 	requestsByPodStatus map[string]int64
 
 	cacheStats func() (hits, misses, purged int64)
@@ -72,6 +73,14 @@ func (m *MetricsCollector) RecordRateLimitExceeded() {
 	m.rateLimitsExceeded++
 }
 
+// RecordRAGFallback counts searches that degraded from external embeddings to
+// query expansion + lexical search (SPEC-CORE-70.R4).
+func (m *MetricsCollector) RecordRAGFallback() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ragFallbacks++
+}
+
 // Snapshot is what the admin telemetry endpoint returns.
 type Snapshot struct {
 	PodRequests      int64            `json:"pod_requests"`
@@ -80,6 +89,7 @@ type Snapshot struct {
 	CacheMisses      int64            `json:"cache_misses"`
 	CachePurged      int64            `json:"cache_purged"`
 	RateLimitBlocked int64            `json:"rate_limit_blocked"`
+	RAGFallbacks     int64            `json:"rag_fallbacks"`
 	ActivePods       int              `json:"active_pods_count"`
 	ByPodStatus      map[string]int64 `json:"requests_by_pod_status"`
 	CMMI             *cmmi.Report     `json:"cmmi"`
@@ -91,6 +101,7 @@ func (m *MetricsCollector) Snapshot() Snapshot {
 	s := Snapshot{
 		PodRequests:      m.podRequests,
 		RateLimitBlocked: m.rateLimitsExceeded,
+		RAGFallbacks:     m.ragFallbacks,
 		ByPodStatus:      make(map[string]int64, len(m.requestsByPodStatus)),
 		CMMI:             m.cmmi,
 	}
@@ -121,6 +132,7 @@ func (m *MetricsCollector) Prometheus() string {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s %s\n%s %v\n\n", name, help, name, typ, name, v)
 	}
 	metric("aipods_requests_total", "counter", "AI Pod requests processed (chat).", s.PodRequests)
+	metric("aipods_rag_fallback_total", "counter", "RAG searches that fell back from external embeddings to lexical search.", s.RAGFallbacks)
 	metric("aipods_request_duration_avg_ms", "gauge", "Average AI Pod request latency in milliseconds.", fmt.Sprintf("%.2f", s.AvgLatencyMs))
 	keys := make([]string, 0, len(s.ByPodStatus))
 	for k := range s.ByPodStatus {

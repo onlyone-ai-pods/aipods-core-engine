@@ -30,6 +30,9 @@ type PodResponse struct {
 	DryRunResult *DryRunResult `json:"dry_run_result,omitempty"`
 	Status       string        `json:"status"`
 	Model        string        `json:"model,omitempty"` // LLM that drafted the answer (SPEC-CORE-66)
+	// RAGStrategy is how the documents were searched (SPEC-CORE-70): query_expansion,
+	// external_embeddings or query_expansion_fallback.
+	RAGStrategy string `json:"rag_strategy,omitempty"`
 }
 
 type BaseAIPod interface {

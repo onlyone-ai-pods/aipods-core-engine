@@ -189,3 +189,38 @@ func TestPostgresPersistsAcrossInstancesAndAuditIsAppendOnly(t *testing.T) {
 		t.Errorf("approval lost across instances: %v", err)
 	}
 }
+
+// SPEC-CORE-70.R3: each tenant keeps its own RAG strategy.
+func TestRAGStrategy(t *testing.T) {
+	ctx := context.Background()
+	for name, mk := range stores(t) {
+		t.Run(name, func(t *testing.T) {
+			s := mk()
+			if _, err := s.GetRAGStrategy(ctx, "NO_SUCH_TENANT"); !errors.Is(err, ErrNotFound) {
+				t.Errorf("unknown tenant: %v", err)
+			}
+			id := "TENANT_RAG_" + name
+			if err := s.EnsureTenant(ctx, id, "Rag"); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := s.GetRAGStrategy(ctx, id); err != nil || got != "query_expansion" {
+				t.Errorf("default = %q, %v", got, err)
+			}
+			if err := s.SetRAGStrategy(ctx, id, "external_embeddings"); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := s.GetRAGStrategy(ctx, id); got != "external_embeddings" {
+				t.Errorf("after set = %q", got)
+			}
+			if got, _ := s.GetRAGStrategy(ctx, "GLOBAL"); got != "query_expansion" {
+				t.Errorf("other tenant changed: %q", got)
+			}
+			if err := s.SetRAGStrategy(ctx, id, "bogus"); !errors.Is(err, ErrInvalid) {
+				t.Errorf("invalid strategy: %v", err)
+			}
+			if err := s.SetRAGStrategy(ctx, "NO_SUCH_TENANT", "query_expansion"); !errors.Is(err, ErrNotFound) {
+				t.Errorf("unknown tenant set: %v", err)
+			}
+		})
+	}
+}

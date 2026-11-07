@@ -8,7 +8,6 @@ import (
 
 	"github.com/martinllanos/only-ai-pods/internal/llm"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
-	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
 
 const ragTopK = 5
@@ -24,18 +23,13 @@ Reglas:
 
 // draftAnswer replaces the pod's canned answer with one written by the LLM.
 // On any LLM error it logs and returns the pod result unchanged (SPEC-CORE-66.R8).
-func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client, retriever Retriever, tenantID, query string, res *pod.PodResponse) *pod.PodResponse {
+func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client, deps retrieval, tenantID, query string, res *pod.PodResponse) *pod.PodResponse {
 	var docs strings.Builder
 	var citations []string
-	if retriever != nil {
-		hits, err := retriever.Search(tenant.WithTenantID(ctx, tenantID), query, ragTopK)
-		if err != nil {
-			log.Printf("[router] RAG search failed for tenant %s: %v", tenantID, err)
-		}
-		for _, h := range hits {
-			fmt.Fprintf(&docs, "<documento cita=%q>\n%s\n</documento>\n", h.CitationID, h.Chunk.Content)
-			citations = appendUnique(citations, h.CitationID)
-		}
+	hits, ragUsed := r.retrieve(ctx, client, deps, tenantID, query)
+	for _, h := range hits {
+		fmt.Fprintf(&docs, "<documento cita=%q>\n%s\n</documento>\n", h.CitationID, h.Chunk.Content)
+		citations = appendUnique(citations, h.CitationID)
 	}
 
 	var prompt strings.Builder
@@ -67,6 +61,7 @@ func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client,
 	out := *res
 	out.Answer = answer
 	out.Model = client.Model()
+	out.RAGStrategy = ragUsed
 	for _, c := range res.Citations {
 		citations = appendUnique(citations, c)
 	}

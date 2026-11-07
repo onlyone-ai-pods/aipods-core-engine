@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"github.com/martinllanos/only-ai-pods/internal/tenant"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ type Memory struct {
 	approvals map[string]Approval
 	secrets   map[string]Secret // by tenant/key
 	audit     []AuditEvent
+	ragStrat  map[string]string // by tenant id; missing = default
 }
 
 func NewMemory() *Memory {
@@ -24,6 +26,7 @@ func NewMemory() *Memory {
 		users:     map[string]User{},
 		approvals: map[string]Approval{},
 		secrets:   map[string]Secret{},
+		ragStrat:  map[string]string{},
 	}
 }
 
@@ -256,4 +259,29 @@ func (m *Memory) ListAudit(_ context.Context, tenantID string, limit int) ([]Aud
 		}
 	}
 	return out, nil
+}
+
+func (m *Memory) GetRAGStrategy(_ context.Context, tenantID string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if _, ok := m.tenants[tenantID]; !ok {
+		return "", ErrNotFound
+	}
+	if s, ok := m.ragStrat[tenantID]; ok {
+		return s, nil
+	}
+	return string(tenant.DefaultRAGStrategy), nil
+}
+
+func (m *Memory) SetRAGStrategy(_ context.Context, tenantID, strategy string) error {
+	if !tenant.ValidRAGStrategy(strategy) {
+		return ErrInvalid
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.tenants[tenantID]; !ok {
+		return ErrNotFound
+	}
+	m.ragStrat[tenantID] = strategy
+	return nil
 }

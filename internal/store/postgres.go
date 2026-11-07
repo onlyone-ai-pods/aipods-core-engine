@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
 
 //go:embed migrations/*.sql
@@ -329,4 +330,28 @@ func (p *Postgres) ListAudit(ctx context.Context, tenantID string, limit int) ([
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// Pool exposes the connection pool to the RAG lexical index, which shares the
+// database (SPEC-CORE-70).
+func (p *Postgres) Pool() *pgxpool.Pool { return p.pool }
+
+func (p *Postgres) GetRAGStrategy(ctx context.Context, tenantID string) (string, error) {
+	var s string
+	err := p.pool.QueryRow(ctx, `SELECT rag_strategy FROM tenants WHERE id = $1`, tenantID).Scan(&s)
+	return s, notFound(err)
+}
+
+func (p *Postgres) SetRAGStrategy(ctx context.Context, tenantID, strategy string) error {
+	if !tenant.ValidRAGStrategy(strategy) {
+		return ErrInvalid
+	}
+	tag, err := p.pool.Exec(ctx, `UPDATE tenants SET rag_strategy = $2 WHERE id = $1`, tenantID, strategy)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
