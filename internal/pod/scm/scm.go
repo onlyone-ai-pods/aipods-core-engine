@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -38,7 +37,7 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "configurar_rutas_wms",
@@ -56,7 +55,7 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "recomendar_bom_mrp",
@@ -74,7 +73,7 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "calcular_landed_costs",

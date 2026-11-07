@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -38,7 +37,7 @@ func (p *CoreSecurityAuditPod) ProcessQuery(ctx context.Context, tenantID string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "generar_reporte_auditoria_seguridad",
@@ -56,7 +55,7 @@ func (p *CoreSecurityAuditPod) ProcessQuery(ctx context.Context, tenantID string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "monitorear_cuota_tokens",

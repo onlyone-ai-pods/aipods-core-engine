@@ -2,6 +2,8 @@ package pod
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type DryRunResult struct {
@@ -12,6 +14,13 @@ type DryRunResult struct {
 	GeneratedCommand      string `json:"generated_command,omitempty"`
 	RequiresHumanApproval bool   `json:"requires_human_approval"`
 	ApprovalToken         string `json:"approval_token,omitempty"`
+}
+
+// NewApprovalToken returns an unguessable approval token (122 random bits).
+// Knowing the token is what lets the requester read its status, so it must
+// not be short (SPEC-CORE-67.R14).
+func NewApprovalToken() string {
+	return "dryrun_" + uuid.NewString()
 }
 
 type PodResponse struct {

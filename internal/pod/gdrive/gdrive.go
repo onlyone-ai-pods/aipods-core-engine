@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -38,7 +37,7 @@ func (p *GDriveSyncPod) ProcessQuery(ctx context.Context, tenantID string, query
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "sincronizar_carpeta_gdrive",
@@ -56,7 +55,7 @@ func (p *GDriveSyncPod) ProcessQuery(ctx context.Context, tenantID string, query
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "extraer_del_nube_gdocs",
