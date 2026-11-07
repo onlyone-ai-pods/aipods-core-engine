@@ -94,3 +94,13 @@ func TestAFIPPodRetencionesQuery(t *testing.T) {
 		t.Errorf("Expected ActionName descargar_retenciones_arca, got: %s", resDry.DryRunResult.ActionName)
 	}
 }
+
+func TestRemoveStopWordsKeepsWholeWords(t *testing.T) {
+	got := removeStopWords("¿cuáles son los tipos de punto de venta para factura electrónica?")
+	if got != "factura electrónica" {
+		t.Errorf("got %q", got)
+	}
+	if got := removeStopWords("ver punto de venta 00007"); got != "00007" {
+		t.Errorf("got %q", got)
+	}
+}
