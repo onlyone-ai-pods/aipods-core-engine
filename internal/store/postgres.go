@@ -139,10 +139,7 @@ func (p *Postgres) CreateUser(ctx context.Context, u User) error {
 }
 
 func (p *Postgres) UserByEmail(ctx context.Context, email string) (User, error) {
-	var u User
-	err := p.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, email, password_hash, roles, active, created_at FROM users WHERE email = lower($1)`, email).
-		Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Roles, &u.Active, &u.CreatedAt)
+	u, err := scanUser(p.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE email = lower($1)`, email))
 	return u, notFound(err)
 }
 
@@ -150,6 +147,56 @@ func (p *Postgres) CountUsers(ctx context.Context) (int, error) {
 	var n int
 	err := p.pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&n)
 	return n, err
+}
+
+const userCols = `id, tenant_id, email, password_hash, roles, active, created_at`
+
+func scanUser(row pgx.Row) (User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Roles, &u.Active, &u.CreatedAt)
+	return u, err
+}
+
+func (p *Postgres) GetUser(ctx context.Context, id string) (User, error) {
+	u, err := scanUser(p.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = $1`, id))
+	return u, notFound(err)
+}
+
+func (p *Postgres) ListUsers(ctx context.Context, tenantID string) ([]User, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT `+userCols+` FROM users WHERE ($1 = '' OR tenant_id = $1) ORDER BY created_at, email`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []User{}
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) UpdateUserPassword(ctx context.Context, id, passwordHash string) error {
+	return execOne(p.pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, passwordHash))
+}
+
+func (p *Postgres) SetUserActive(ctx context.Context, id string, active bool) error {
+	return execOne(p.pool.Exec(ctx, `UPDATE users SET active = $2 WHERE id = $1`, id, active))
+}
+
+// execOne maps "no row updated" to ErrNotFound.
+func execOne(tag pgconn.CommandTag, err error) error {
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 const approvalCols = `token, tenant_id, pod_id, action_name, summary, command, status, execution_result, decided_by, requested_at, decided_at`

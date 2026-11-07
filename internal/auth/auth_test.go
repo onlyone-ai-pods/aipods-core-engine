@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -134,5 +136,29 @@ func TestGuardOffKeepsPrototypeBehaviour(t *testing.T) {
 	}
 	if w := do(r, "/api/v1/admin/approvals", ""); w.Code != 200 {
 		t.Errorf("off mode should not check roles, got %d", w.Code)
+	}
+}
+
+func TestGuardRejectsInactiveUser(t *testing.T) {
+	iss := testIssuer(t)
+	active := map[string]bool{"u1": true, "u2": false}
+	g := &Guard{Mode: ModeEnforce, Issuer: iss, UserActive: func(_ context.Context, id string) (bool, error) {
+		if id == "u3" {
+			return false, errors.New("db down")
+		}
+		return active[id], nil
+	}}
+	r := newRouter(g)
+	ok, _, _ := iss.Issue("u1", "a@x.com", "t", []string{RoleCustomer})
+	off, _, _ := iss.Issue("u2", "b@x.com", "t", []string{RoleCustomer})
+	broken, _, _ := iss.Issue("u3", "c@x.com", "t", []string{RoleCustomer})
+	if w := do(r, "/api/v1/chat", ok); w.Code != 200 {
+		t.Errorf("active user: got %d", w.Code)
+	}
+	if w := do(r, "/api/v1/chat", off); w.Code != 401 {
+		t.Errorf("deactivated user with a valid token must get 401, got %d", w.Code)
+	}
+	if w := do(r, "/api/v1/chat", broken); w.Code != 503 {
+		t.Errorf("store error must fail closed with 503, got %d", w.Code)
 	}
 }

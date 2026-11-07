@@ -177,9 +177,17 @@ func main() {
 	if err := bootstrapAdmin(ctx, st, os.Getenv); err != nil {
 		log.Fatalf("auth: bootstrap admin: %v", err)
 	}
+	guard.UserActive = func(ctx context.Context, userID string) (bool, error) {
+		u, err := st.GetUser(ctx, userID)
+		if errors.Is(err, store.ErrNotFound) {
+			return false, nil
+		}
+		return err == nil && u.Active, err
+	}
 	auditLog := auditor{st: st, guard: guard}
 	r.Use(guard.Authenticate())
 	registerAuthRoutes(r, st, guard, auditLog)
+	registerUserRoutes(r, st, guard, auditLog)
 
 	// Initialize Rate Limiter Middleware (Issue #2 / SPEC-CORE-07)
 	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 300)

@@ -73,6 +73,67 @@ func (m *Memory) CountUsers(context.Context) (int, error) {
 	return len(m.users), nil
 }
 
+// userByIDLocked finds a user by id; callers hold m.mu.
+func (m *Memory) userByIDLocked(id string) (string, User, bool) {
+	for k, u := range m.users {
+		if u.ID == id {
+			return k, u, true
+		}
+	}
+	return "", User{}, false
+}
+
+func (m *Memory) GetUser(_ context.Context, id string) (User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if _, u, ok := m.userByIDLocked(id); ok {
+		return u, nil
+	}
+	return User{}, ErrNotFound
+}
+
+func (m *Memory) ListUsers(_ context.Context, tenantID string) ([]User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []User{}
+	for _, u := range m.users {
+		if tenantID == "" || u.TenantID == tenantID {
+			out = append(out, u)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].Email < out[j].Email
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (m *Memory) UpdateUserPassword(_ context.Context, id, passwordHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, u, ok := m.userByIDLocked(id)
+	if !ok {
+		return ErrNotFound
+	}
+	u.PasswordHash = passwordHash
+	m.users[k] = u
+	return nil
+}
+
+func (m *Memory) SetUserActive(_ context.Context, id string, active bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, u, ok := m.userByIDLocked(id)
+	if !ok {
+		return ErrNotFound
+	}
+	u.Active = active
+	m.users[k] = u
+	return nil
+}
+
 func (m *Memory) AddApproval(_ context.Context, a Approval) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
