@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -39,7 +38,7 @@ func (p *MultimediaWhisperPod) ProcessQuery(ctx context.Context, tenantID string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "transcribir_audio_whatsapp",
@@ -57,7 +56,7 @@ func (p *MultimediaWhisperPod) ProcessQuery(ctx context.Context, tenantID string
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "transcribir_video_capacitacion",

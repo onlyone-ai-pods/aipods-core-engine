@@ -161,7 +161,10 @@ func CORSMiddleware() gin.HandlerFunc {
 
 func main() {
 	ctx := context.Background()
-	r := gin.Default()
+	r, err := newEngine(os.Getenv)
+	if err != nil {
+		log.Fatalf("http: %v", err)
+	}
 	r.Use(CORSMiddleware())
 
 	// Persistence and authentication (SPEC-CORE-67)
@@ -188,6 +191,7 @@ func main() {
 	r.Use(guard.Authenticate())
 	registerAuthRoutes(r, st, guard, auditLog)
 	registerUserRoutes(r, st, guard, auditLog)
+	registerApprovalStatusRoute(r, st)
 
 	// Initialize Rate Limiter Middleware (Issue #2 / SPEC-CORE-07)
 	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 300)

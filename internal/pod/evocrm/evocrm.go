@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -39,7 +38,7 @@ func (p *EvoCRMPod) ProcessQuery(ctx context.Context, tenantID string, query str
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "validar_webhook_evocrm",
@@ -57,7 +56,7 @@ func (p *EvoCRMPod) ProcessQuery(ctx context.Context, tenantID string, query str
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "crear_campana_masiva_evocrm",

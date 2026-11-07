@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
 
@@ -34,7 +33,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 
 	if strings.Contains(lowerQuery, "retencion") || strings.Contains(lowerQuery, "retenciones") || strings.Contains(lowerQuery, "percepcion") || strings.Contains(lowerQuery, "sicore") || strings.Contains(lowerQuery, "sire") {
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := "node scripts/mis_retenciones_arca.js --cuit=20262534538"
 			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la consulta de **Mis Retenciones / Percepciones** en el servicio Mirequa de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```", tenantID, cmdPreview)
 			citations = []string{"ARCA_MisRetenciones_Spec_v2026.pdf"}
@@ -68,7 +67,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		matches, searchTerm := p.SearchPuntosDeVenta(query)
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := fmt.Sprintf("node scripts/puntos_de_venta_arca.js --accion=%s --query=\"%s\" --cuit=20262534538", accion, searchTerm)
 
 			var matchesText []string
@@ -111,7 +110,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := fmt.Sprintf("node scripts/mis_comprobantes_arca.js --tipo=%s --cuit=20262534538", tipo)
 			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la consulta de **Mis Comprobantes (%s)** en el portal de ARCA/AFIP para el CUIT de la empresa (%s).\n\nComando a ejecutar:\n```bash\n%s\n```", tipo, tenantID, cmdPreview)
 			citations = []string{"ARCA_MisComprobantes_Spec_v2026.pdf", "Portal_Clave_Fiscal_ARCA.pdf"}
@@ -141,7 +140,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		periodoFiltro, suggestion := p.ParsePeriodoMonotributo(query)
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := fmt.Sprintf("node scripts/monotributo_estado_cuenta.js --cuit=20262534538 --periodo=%s", periodoFiltro)
 
 			if suggestion != "" {
@@ -174,7 +173,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		}
 
 		if dryRun {
-			dynamicApprovalID := fmt.Sprintf("dryrun_%s", uuid.New().String()[:8])
+			dynamicApprovalID := pod.NewApprovalToken()
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "generar_csr_afip",

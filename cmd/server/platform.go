@@ -63,7 +63,7 @@ func buildGuard(getenv func(string) string) (*auth.Guard, error) {
 	return &auth.Guard{
 		Mode:   mode,
 		Issuer: issuer,
-		Public: []string{"/healthz", "/metrics", "/api/v1/auth/login", "/api/v1/sandbox/"},
+		Public: []string{"/healthz", "/metrics", "/api/v1/auth/login", "/api/v1/sandbox/", "/api/v1/approvals/"},
 	}, nil
 }
 
