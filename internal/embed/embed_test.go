@@ -51,3 +51,38 @@ func TestHashEmbedderIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+func TestOllamaEmbedderBatchesLongInputs(t *testing.T) {
+	var calls, maxBatch int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Input []string `json:"input"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		calls++
+		maxBatch = max(maxBatch, len(req.Input))
+		vecs := make([][]float32, len(req.Input))
+		for i, s := range req.Input {
+			vecs[i] = []float32{float32(len(s)), 0}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": vecs})
+	}))
+	defer srv.Close()
+
+	texts := make([]string, 40)
+	for i := range texts {
+		texts[i] = string(make([]byte, i+1))
+	}
+	vecs, err := NewOllamaEmbedder(srv.URL, "bge-m3", 2).Embed(context.Background(), texts)
+	if err != nil || len(vecs) != 40 {
+		t.Fatalf("Embed: %v, %d vectors", err, len(vecs))
+	}
+	if calls != 3 || maxBatch > ollamaBatchSize {
+		t.Errorf("expected 3 calls of at most %d texts, got %d calls, max %d", ollamaBatchSize, calls, maxBatch)
+	}
+	for i, v := range vecs {
+		if int(v[0]) != i+1 {
+			t.Fatalf("vector %d out of order", i)
+		}
+	}
+}

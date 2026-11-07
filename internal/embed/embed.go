@@ -44,10 +44,24 @@ func NewOllamaEmbedder(baseURL, model string, dimension int) *OllamaEmbedder {
 func (o *OllamaEmbedder) Dimension() int { return o.dimension }
 func (o *OllamaEmbedder) Name() string   { return "ollama:" + o.model }
 
+// ollamaBatchSize keeps each /api/embed call short: a long PDF sent in a single
+// request ran past the HTTP timeout on the VPS CPU.
+const ollamaBatchSize = 16
+
 func (o *OllamaEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
-	if len(texts) == 0 {
-		return nil, nil
+	out := make([][]float32, 0, len(texts))
+	for start := 0; start < len(texts); start += ollamaBatchSize {
+		end := min(start+ollamaBatchSize, len(texts))
+		vecs, err := o.embedBatch(ctx, texts[start:end])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vecs...)
 	}
+	return out, nil
+}
+
+func (o *OllamaEmbedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	body, err := json.Marshal(map[string]any{"model": o.model, "input": texts})
 	if err != nil {
 		return nil, err
