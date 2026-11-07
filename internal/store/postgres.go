@@ -149,11 +149,11 @@ func (p *Postgres) CountUsers(ctx context.Context) (int, error) {
 	return n, err
 }
 
-const userCols = `id, tenant_id, email, password_hash, roles, active, created_at`
+const userCols = `id, tenant_id, email, password_hash, roles, active, created_at, token_version`
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Roles, &u.Active, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Roles, &u.Active, &u.CreatedAt, &u.TokenVersion)
 	return u, err
 }
 
@@ -181,7 +181,7 @@ func (p *Postgres) ListUsers(ctx context.Context, tenantID string) ([]User, erro
 }
 
 func (p *Postgres) UpdateUserPassword(ctx context.Context, id, passwordHash string) error {
-	return execOne(p.pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, passwordHash))
+	return execOne(p.pool.Exec(ctx, `UPDATE users SET password_hash = $2, token_version = token_version + 1 WHERE id = $1`, id, passwordHash))
 }
 
 func (p *Postgres) SetUserActive(ctx context.Context, id string, active bool) error {

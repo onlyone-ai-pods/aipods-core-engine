@@ -27,9 +27,9 @@ func newUserAPI(t *testing.T) *userAPI {
 	}
 	st := store.NewMemory()
 	guard := &auth.Guard{Mode: auth.ModeEnforce, Issuer: auth.NewIssuer(key, 0), Public: []string{"/api/v1/auth/login"}}
-	guard.UserActive = func(ctx context.Context, id string) (bool, error) {
+	guard.UserState = func(ctx context.Context, id string) (bool, int, error) {
 		u, err := st.GetUser(ctx, id)
-		return err == nil && u.Active, nil
+		return err == nil && u.Active, u.TokenVersion, nil
 	}
 	env := map[string]string{"AUTH_BOOTSTRAP_EMAIL": "root@aipods.ar", "AUTH_BOOTSTRAP_PASSWORD": "root-password-123"}
 	if err := bootstrapAdmin(context.Background(), st, func(k string) string { return env[k] }); err != nil {
@@ -90,8 +90,22 @@ func TestChangeOwnPassword(t *testing.T) {
 	if code, _ := api.call("POST", "/api/v1/auth/password", "", map[string]string{"current_password": "x", "new_password": "y"}); code != 401 {
 		t.Errorf("no token: want 401, got %d", code)
 	}
-	if code, out := api.call("POST", "/api/v1/auth/password", tok, map[string]string{"current_password": "root-password-123", "new_password": "brand-new-pass-456"}); code != 200 {
+	other := api.login("root@aipods.ar", "root-password-123") // a second open session
+	code, out := api.call("POST", "/api/v1/auth/password", tok, map[string]string{"current_password": "root-password-123", "new_password": "brand-new-pass-456"})
+	if code != 200 {
 		t.Fatalf("change: %d %v", code, out)
+	}
+	fresh, _ := out["access_token"].(string)
+	if fresh == "" {
+		t.Fatal("the change must return a new token so this session stays open")
+	}
+	for name, old := range map[string]string{"same session": tok, "other session": other} {
+		if code, _ := api.call("GET", "/api/v1/admin/users", old, nil); code != 401 {
+			t.Errorf("%s token from before the change must get 401, got %d", name, code)
+		}
+	}
+	if code, _ := api.call("GET", "/api/v1/admin/users", fresh, nil); code != 200 {
+		t.Errorf("new token must work, got %d", code)
 	}
 	if code, _ := api.call("POST", "/api/v1/auth/login", "", map[string]string{"email": "root@aipods.ar", "password": "root-password-123"}); code != 401 {
 		t.Errorf("old password must stop working, got %d", code)
@@ -145,6 +159,9 @@ func TestUserAdministration(t *testing.T) {
 	// Reset password, then deactivate: the open session dies at once.
 	if code, out := api.call("POST", "/api/v1/admin/users/"+anaID+"/password", jefa, map[string]string{"new_password": "reset-by-admin-789"}); code != 200 {
 		t.Fatalf("reset: %d %v", code, out)
+	}
+	if code, _ := api.call("POST", "/api/v1/auth/password", ana, map[string]string{"current_password": "x", "new_password": "y"}); code != 401 {
+		t.Errorf("an admin reset must end the user's open sessions, got %d", code)
 	}
 	ana = api.login("ana@acme.test", "reset-by-admin-789")
 	if code, _ := api.call("GET", "/api/v1/auth/me", ana, nil); code != 200 {

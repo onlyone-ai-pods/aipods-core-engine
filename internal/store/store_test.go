@@ -81,7 +81,7 @@ func TestStoreContract(t *testing.T) {
 			if err := s.SetUserActive(ctx, "u1", false); err != nil {
 				t.Fatal(err)
 			}
-			if got, err := s.GetUser(ctx, "u1"); err != nil || got.PasswordHash != "h2" || got.Active {
+			if got, err := s.GetUser(ctx, "u1"); err != nil || got.PasswordHash != "h2" || got.Active || got.TokenVersion != 1 {
 				t.Errorf("GetUser after updates: %+v %v", got, err)
 			}
 			if got, _ := s.UserByEmail(ctx, "ana@acme.com"); got.PasswordHash != "h2" {

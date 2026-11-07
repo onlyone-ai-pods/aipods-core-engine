@@ -149,7 +149,7 @@ func registerAuthRoutes(r *gin.Engine, st store.Store, guard *auth.Guard, audit 
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "credenciales inválidas"})
 			return
 		}
-		token, exp, err := guard.Issuer.Issue(u.ID, u.Email, u.TenantID, u.Roles)
+		token, exp, err := guard.Issuer.Issue(u.ID, u.Email, u.TenantID, u.Roles, u.TokenVersion)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not issue token"})
 			return

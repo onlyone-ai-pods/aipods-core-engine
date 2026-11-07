@@ -25,9 +25,10 @@ type Guard struct {
 	Issuer *Issuer
 	// Public paths skip authentication (exact match or prefix ending in "/").
 	Public []string
-	// UserActive, when set, is checked on every authenticated request so a
-	// deactivated user loses access before the token expires (SPEC-CORE-67.R13).
-	UserActive func(ctx context.Context, userID string) (bool, error)
+	// UserState, when set, is checked on every authenticated request: a
+	// deactivated user (SPEC-CORE-67.R13) or a token older than the user's last
+	// password change (R15) loses access before the token expires.
+	UserState func(ctx context.Context, userID string) (active bool, tokenVersion int, err error)
 }
 
 func (g *Guard) Enforced() bool { return g.Mode == ModeEnforce }
@@ -58,13 +59,13 @@ func (g *Guard) Authenticate() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": ErrInvalidToken.Error()})
 			return
 		}
-		if g.UserActive != nil {
-			active, err := g.UserActive(c.Request.Context(), claims.UserID)
+		if g.UserState != nil {
+			active, version, err := g.UserState(c.Request.Context(), claims.UserID)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "could not verify user"})
 				return
 			}
-			if !active {
+			if !active || version != claims.TokenVersion {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": ErrInvalidToken.Error()})
 				return
 			}

@@ -24,7 +24,7 @@ func testIssuer(t *testing.T) *Issuer {
 
 func TestIssueAndVerify(t *testing.T) {
 	iss := testIssuer(t)
-	tok, _, err := iss.Issue("u1", "ana@acme.com", "tenant_acme", []string{RoleCustomer})
+	tok, _, err := iss.Issue("u1", "ana@acme.com", "tenant_acme", []string{RoleCustomer}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestIssueAndVerify(t *testing.T) {
 	// Expired token is rejected.
 	expired := NewIssuer(iss.key, -time.Hour)
 	expired.ttl = -time.Minute
-	old, _, _ := expired.Issue("u1", "a", "t", nil)
+	old, _, _ := expired.Issue("u1", "a", "t", nil, 0)
 	if _, err := iss.Verify(old); err == nil {
 		t.Error("expired token must be rejected")
 	}
@@ -99,8 +99,8 @@ func TestGuardEnforce(t *testing.T) {
 	iss := testIssuer(t)
 	g := &Guard{Mode: ModeEnforce, Issuer: iss, Public: []string{"/healthz"}}
 	r := newRouter(g)
-	customer, _, _ := iss.Issue("u1", "ana@acme.com", "tenant_acme", []string{RoleCustomer})
-	admin, _, _ := iss.Issue("u2", "root@aipods.ar", "GLOBAL", []string{RolePlatformAdmin})
+	customer, _, _ := iss.Issue("u1", "ana@acme.com", "tenant_acme", []string{RoleCustomer}, 0)
+	admin, _, _ := iss.Issue("u2", "root@aipods.ar", "GLOBAL", []string{RolePlatformAdmin}, 0)
 
 	cases := []struct {
 		name, path, token string
@@ -142,16 +142,27 @@ func TestGuardOffKeepsPrototypeBehaviour(t *testing.T) {
 func TestGuardRejectsInactiveUser(t *testing.T) {
 	iss := testIssuer(t)
 	active := map[string]bool{"u1": true, "u2": false}
-	g := &Guard{Mode: ModeEnforce, Issuer: iss, UserActive: func(_ context.Context, id string) (bool, error) {
+	g := &Guard{Mode: ModeEnforce, Issuer: iss, UserState: func(_ context.Context, id string) (bool, int, error) {
 		if id == "u3" {
-			return false, errors.New("db down")
+			return false, 0, errors.New("db down")
 		}
-		return active[id], nil
+		if id == "u4" {
+			return true, 2, nil // password changed twice since "stale" was issued
+		}
+		return active[id], 0, nil
 	}}
 	r := newRouter(g)
-	ok, _, _ := iss.Issue("u1", "a@x.com", "t", []string{RoleCustomer})
-	off, _, _ := iss.Issue("u2", "b@x.com", "t", []string{RoleCustomer})
-	broken, _, _ := iss.Issue("u3", "c@x.com", "t", []string{RoleCustomer})
+	ok, _, _ := iss.Issue("u1", "a@x.com", "t", []string{RoleCustomer}, 0)
+	off, _, _ := iss.Issue("u2", "b@x.com", "t", []string{RoleCustomer}, 0)
+	broken, _, _ := iss.Issue("u3", "c@x.com", "t", []string{RoleCustomer}, 0)
+	stale, _, _ := iss.Issue("u4", "d@x.com", "t", []string{RoleCustomer}, 1)
+	fresh, _, _ := iss.Issue("u4", "d@x.com", "t", []string{RoleCustomer}, 2)
+	if w := do(r, "/api/v1/chat", stale); w.Code != 401 {
+		t.Errorf("token issued before the last password change must get 401, got %d", w.Code)
+	}
+	if w := do(r, "/api/v1/chat", fresh); w.Code != 200 {
+		t.Errorf("token with the current version: got %d", w.Code)
+	}
 	if w := do(r, "/api/v1/chat", ok); w.Code != 200 {
 		t.Errorf("active user: got %d", w.Code)
 	}

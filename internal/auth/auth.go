@@ -43,6 +43,9 @@ type Claims struct {
 	UserID   string   `json:"user_id"`
 	Email    string   `json:"email"`
 	Roles    []string `json:"roles"`
+	// TokenVersion must match the user's current version (SPEC-CORE-67.R15).
+	// Tokens issued before it existed carry 0, the starting version.
+	TokenVersion int `json:"tv,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -101,14 +104,15 @@ func GenerateDevKey() (*rsa.PrivateKey, error) {
 }
 
 // Issue signs a token for a user.
-func (i *Issuer) Issue(userID, email, tenantID string, roles []string) (string, time.Time, error) {
+func (i *Issuer) Issue(userID, email, tenantID string, roles []string, tokenVersion int) (string, time.Time, error) {
 	now := time.Now()
 	exp := now.Add(i.ttl)
 	claims := Claims{
-		TenantID: tenantID,
-		UserID:   userID,
-		Email:    email,
-		Roles:    roles,
+		TenantID:     tenantID,
+		UserID:       userID,
+		Email:        email,
+		Roles:        roles,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			Issuer:    issuer,
