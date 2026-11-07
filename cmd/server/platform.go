@@ -232,8 +232,16 @@ func registerAuthRoutes(r *gin.Engine, st store.Store, guard *auth.Guard, audit 
 		c.JSON(http.StatusCreated, gin.H{"user": gin.H{"id": u.ID, "email": u.Email, "tenant_id": u.TenantID, "roles": u.Roles}})
 	})
 
-	r.GET("/api/v1/admin/audit/log", guard.RequireRoles(auth.RoleAuditor, auth.RolePlatformAdmin), func(c *gin.Context) {
+	// Audit log: auditor and platform_admin see any tenant, a tenant_admin
+	// only its own (SPEC-CORE-67.R17).
+	r.GET("/api/v1/admin/audit/log", guard.RequireRoles(auth.RoleAuditor, auth.RolePlatformAdmin, auth.RoleTenantAdmin), func(c *gin.Context) {
 		tenantID := c.Query("tenant_id")
+		if !guard.CrossTenant(c) {
+			var ok bool
+			if tenantID, ok = guard.ResolveTenant(c, tenantID, "", false); !ok {
+				return
+			}
+		}
 		events, err := st.ListAudit(c.Request.Context(), tenantID, 200)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

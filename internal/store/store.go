@@ -75,6 +75,9 @@ type Store interface {
 	ListUsers(ctx context.Context, tenantID string) ([]User, error)
 	UpdateUserPassword(ctx context.Context, id, passwordHash string) error
 	SetUserActive(ctx context.Context, id string, active bool) error
+	// SetUserRoles replaces the roles and bumps token_version, so tokens
+	// issued with the old roles stop working.
+	SetUserRoles(ctx context.Context, id string, roles []string) error
 
 	AddApproval(ctx context.Context, a Approval) error
 	ListApprovals(ctx context.Context, tenantID string) ([]Approval, error)

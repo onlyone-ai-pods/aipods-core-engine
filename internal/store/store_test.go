@@ -87,6 +87,15 @@ func TestStoreContract(t *testing.T) {
 			if got, _ := s.UserByEmail(ctx, "ana@acme.com"); got.PasswordHash != "h2" {
 				t.Errorf("UserByEmail must see the new hash: %+v", got)
 			}
+			if err := s.SetUserRoles(ctx, "u1", []string{"tenant_admin"}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := s.GetUser(ctx, "u1"); len(got.Roles) != 1 || got.Roles[0] != "tenant_admin" || got.TokenVersion != 2 {
+				t.Errorf("SetUserRoles must replace roles and bump token_version: %+v", got)
+			}
+			if err := s.SetUserRoles(ctx, "nope", []string{"customer"}); !errors.Is(err, ErrNotFound) {
+				t.Errorf("SetUserRoles unknown should be ErrNotFound, got %v", err)
+			}
 			if err := s.SetUserActive(ctx, "nope", true); !errors.Is(err, ErrNotFound) {
 				t.Errorf("unknown user should be ErrNotFound, got %v", err)
 			}

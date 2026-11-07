@@ -188,6 +188,10 @@ func (p *Postgres) SetUserActive(ctx context.Context, id string, active bool) er
 	return execOne(p.pool.Exec(ctx, `UPDATE users SET active = $2 WHERE id = $1`, id, active))
 }
 
+func (p *Postgres) SetUserRoles(ctx context.Context, id string, roles []string) error {
+	return execOne(p.pool.Exec(ctx, `UPDATE users SET roles = $2, token_version = token_version + 1 WHERE id = $1`, id, roles))
+}
+
 // execOne maps "no row updated" to ErrNotFound.
 func execOne(tag pgconn.CommandTag, err error) error {
 	if err != nil {
