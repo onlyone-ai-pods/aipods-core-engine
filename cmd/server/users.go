@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/martinllanos/only-ai-pods/internal/auth"
@@ -18,6 +19,10 @@ type ChangePasswordRequest struct {
 
 type ResetPasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required"`
+}
+
+type SetRolesRequest struct {
+	Roles []string `json:"roles" binding:"required"`
 }
 
 type SetActiveRequest struct {
@@ -215,5 +220,41 @@ func registerUserRoutes(r *gin.Engine, st store.Store, guard *auth.Guard, audit 
 		}
 		audit.record(c, u.TenantID, "user.password_reset", u.Email, "success")
 		c.JSON(http.StatusOK, gin.H{"status": "OK"})
+	})
+
+	// Change a user's roles (R16). A tenant_admin can only hand out customer
+	// and tenant_admin. The user's open sessions end because the roles live
+	// in the token.
+	r.PATCH("/api/v1/admin/users/:id/roles", manage, func(c *gin.Context) {
+		if !requireEnforced(guard, c) {
+			return
+		}
+		var req SetRolesRequest
+		if err := c.ShouldBindJSON(&req); err != nil || len(req.Roles) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "roles must list at least one role"})
+			return
+		}
+		cl := auth.ClaimsFrom(c)
+		for _, role := range req.Roles {
+			if !auth.ValidRole(role) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "unknown role " + role})
+				return
+			}
+			if (role == auth.RolePlatformAdmin || role == auth.RoleAuditor) && !cl.HasRole(auth.RolePlatformAdmin) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "cannot grant role " + role})
+				return
+			}
+		}
+		u, ok := loadTarget(c)
+		if !ok {
+			return
+		}
+		if err := st.SetUserRoles(c.Request.Context(), u.ID, req.Roles); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		audit.record(c, u.TenantID, "user.roles", u.Email+" -> "+strings.Join(req.Roles, ","), "success")
+		u.Roles = req.Roles
+		c.JSON(http.StatusOK, gin.H{"status": "OK", "user": u})
 	})
 }

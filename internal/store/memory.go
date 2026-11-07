@@ -135,6 +135,19 @@ func (m *Memory) SetUserActive(_ context.Context, id string, active bool) error 
 	return nil
 }
 
+func (m *Memory) SetUserRoles(_ context.Context, id string, roles []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, u, ok := m.userByIDLocked(id)
+	if !ok {
+		return ErrNotFound
+	}
+	u.Roles = append([]string(nil), roles...)
+	u.TokenVersion++
+	m.users[k] = u
+	return nil
+}
+
 func (m *Memory) AddApproval(_ context.Context, a Approval) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

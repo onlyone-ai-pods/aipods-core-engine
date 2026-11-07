@@ -193,3 +193,64 @@ func TestUserAdministration(t *testing.T) {
 		}
 	}
 }
+
+func TestTenantAdminManagesRoles(t *testing.T) {
+	api := newUserAPI(t)
+	root := api.login("root@aipods.ar", "root-password-123")
+	api.create(root, "tenant_acme", "jefa@acme.test", auth.RoleTenantAdmin)
+	anaID := api.create(root, "tenant_acme", "ana@acme.test", auth.RoleCustomer)
+	otroID := api.create(root, "tenant_otro", "luis@otro.test", auth.RoleCustomer)
+	jefa := api.login("jefa@acme.test", "initial-pass-123")
+	ana := api.login("ana@acme.test", "initial-pass-123")
+	path := "/api/v1/admin/users/" + anaID + "/roles"
+
+	if code, _ := api.call("PATCH", path, jefa, map[string][]string{"roles": {auth.RoleAuditor}}); code != 403 {
+		t.Errorf("tenant_admin cannot grant auditor, got %d", code)
+	}
+	if code, _ := api.call("PATCH", path, jefa, map[string][]string{"roles": {}}); code != 400 {
+		t.Errorf("empty roles must be rejected, got %d", code)
+	}
+	if code, _ := api.call("PATCH", path, jefa, map[string][]string{"roles": {"owner"}}); code != 400 {
+		t.Errorf("unknown role must be rejected, got %d", code)
+	}
+	if code, _ := api.call("PATCH", "/api/v1/admin/users/"+otroID+"/roles", jefa, map[string][]string{"roles": {auth.RoleTenantAdmin}}); code != 404 {
+		t.Errorf("other tenant's user must look missing, got %d", code)
+	}
+	if code, _ := api.call("PATCH", path, ana, map[string][]string{"roles": {auth.RoleTenantAdmin}}); code != 403 {
+		t.Errorf("a customer cannot change roles, got %d", code)
+	}
+	code, out := api.call("PATCH", path, jefa, map[string][]string{"roles": {auth.RoleTenantAdmin}})
+	if code != 200 || out["user"].(map[string]any)["roles"].([]any)[0] != auth.RoleTenantAdmin {
+		t.Fatalf("promote ana: %d %v", code, out)
+	}
+	if code, _ := api.call("GET", "/api/v1/auth/me", ana, nil); code != 401 {
+		t.Errorf("token with old roles must stop working, got %d", code)
+	}
+	ana = api.login("ana@acme.test", "initial-pass-123")
+	if code, _ := api.call("GET", "/api/v1/admin/users", ana, nil); code != 200 {
+		t.Errorf("promoted ana can list her team, got %d", code)
+	}
+
+	// Audit log scoped to the tenant_admin's own tenant.
+	code, out = api.call("GET", "/api/v1/admin/audit/log?tenant_id=tenant_otro", jefa, nil)
+	if code != 403 {
+		t.Errorf("tenant_admin cannot read another tenant's audit, got %d %v", code, out)
+	}
+	code, out = api.call("GET", "/api/v1/admin/audit/log", jefa, nil)
+	if code != 200 {
+		t.Fatalf("tenant_admin reads its audit: %d %v", code, out)
+	}
+	found := false
+	for _, raw := range out["events"].([]any) {
+		e := raw.(map[string]any)
+		if e["tenant_id"] != "tenant_acme" {
+			t.Errorf("leaked event from %v", e["tenant_id"])
+		}
+		if e["action"] == "user.roles" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("missing user.roles audit event")
+	}
+}
