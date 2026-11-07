@@ -198,6 +198,8 @@ func main() {
 	r.Use(rateLimiter.Middleware())
 
 	smartRouter := router.NewDynamicSmartRouter()
+	metricsCollector := telemetry.GetMetricsCollector()
+	metricsCollector.SetCMMI(loadCMMIReport(os.Getenv))
 	swarmOrchestrator := router.NewSwarmOrchestrator(smartRouter)
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
@@ -216,6 +218,7 @@ func main() {
 	// Initialize LLM + RAG from the environment (SPEC-CORE-66)
 	ai := buildAIStack(os.Getenv)
 	semanticCache := rag.NewSemanticCacheManager("localhost:6379", 1*time.Hour)
+	metricsCollector.SetSources(semanticCache.Stats, smartRouter.PodCount)
 	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
 	smartRouter.SetRetriever(ragService)
 	if ai.llm != nil {
@@ -411,21 +414,11 @@ func main() {
 	})
 
 	// Prometheus Metrics Exporter Endpoint (Issue #4 / SPEC-CORE-25)
-	metricsCollector := telemetry.GetMetricsCollector()
 	r.GET("/metrics", metricsCollector.PrometheusExporterHandler)
 
-	// Admin Telemetry JSON Endpoint for Admin Review Hub
+	// Admin Telemetry JSON Endpoint: the same measured numbers as /metrics (SPEC-CORE-68).
 	r.GET("/api/v1/admin/telemetry", adminRoles, func(c *gin.Context) {
-		hits, misses, purged := semanticCache.Stats()
-		c.JSON(http.StatusOK, gin.H{
-			"status":             "OK",
-			"cache_hits":         hits,
-			"cache_misses":       misses,
-			"cache_purged":       purged,
-			"avg_latency_ms":     12.4,
-			"active_pods_count":  3,
-			"rate_limit_blocked": 0,
-		})
+		c.JSON(http.StatusOK, gin.H{"status": "OK", "telemetry": metricsCollector.Snapshot()})
 	})
 
 	// Feedback Status GET Endpoint for Browser Inspection
@@ -556,7 +549,11 @@ func main() {
 			return
 		}
 
+		started := time.Now()
 		res, session, err := sandboxManager.ExecuteSandboxQuery(c.Request.Context(), req.SessionID, req.Message)
+		if err == nil && res != nil {
+			metricsCollector.RecordRequest(res.PodID, time.Since(started), http.StatusOK)
+		}
 		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{
 				"error":      err.Error(),
@@ -599,11 +596,14 @@ func main() {
 			return
 		}
 		ctx := tenant.WithTenantID(c.Request.Context(), tenantID)
+		started := time.Now()
 		res, err := smartRouter.RouteAndExecute(ctx, tenantID, req.Message, dryRun)
 		if err != nil {
+			metricsCollector.RecordRequest("", time.Since(started), http.StatusInternalServerError)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		metricsCollector.RecordRequest(res.PodID, time.Since(started), http.StatusOK)
 
 		if res.DryRunResult != nil && res.DryRunResult.RequiresHumanApproval && res.DryRunResult.ApprovalToken != "" {
 			recordApproval(c, st, res, tenantID)

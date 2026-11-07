@@ -128,6 +128,13 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 }
 
 // SetLLM enables LLM routing and answer drafting. Pass nil to disable.
+// PodCount reports how many pods (static and dynamic) are registered.
+func (r *DynamicSmartRouter) PodCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.staticPods) + len(r.dynamicPods)
+}
+
 func (r *DynamicSmartRouter) SetLLM(c llm.Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
