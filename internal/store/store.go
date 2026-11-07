@@ -69,6 +69,11 @@ type Store interface {
 	CreateUser(ctx context.Context, u User) error
 	UserByEmail(ctx context.Context, email string) (User, error)
 	CountUsers(ctx context.Context) (int, error)
+	GetUser(ctx context.Context, id string) (User, error)
+	// ListUsers returns users oldest first; tenantID "" means all tenants.
+	ListUsers(ctx context.Context, tenantID string) ([]User, error)
+	UpdateUserPassword(ctx context.Context, id, passwordHash string) error
+	SetUserActive(ctx context.Context, id string, active bool) error
 
 	AddApproval(ctx context.Context, a Approval) error
 	ListApprovals(ctx context.Context, tenantID string) ([]Approval, error)

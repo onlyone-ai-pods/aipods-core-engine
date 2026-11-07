@@ -66,6 +66,33 @@ func TestStoreContract(t *testing.T) {
 			if n, _ := s.CountUsers(ctx); n != 1 {
 				t.Errorf("expected 1 user, got %d", n)
 			}
+			if err := s.CreateUser(ctx, User{ID: "u4", TenantID: "GLOBAL", Email: "ops@aipods.ar", PasswordHash: "h", Roles: []string{"platform_admin"}, Active: true}); err != nil {
+				t.Fatal(err)
+			}
+			if list, _ := s.ListUsers(ctx, "tenant_acme"); len(list) != 1 || list[0].ID != "u1" {
+				t.Errorf("ListUsers tenant filter broken: %+v", list)
+			}
+			if list, _ := s.ListUsers(ctx, ""); len(list) != 2 {
+				t.Errorf("ListUsers all: expected 2, got %+v", list)
+			}
+			if err := s.UpdateUserPassword(ctx, "u1", "h2"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.SetUserActive(ctx, "u1", false); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := s.GetUser(ctx, "u1"); err != nil || got.PasswordHash != "h2" || got.Active {
+				t.Errorf("GetUser after updates: %+v %v", got, err)
+			}
+			if got, _ := s.UserByEmail(ctx, "ana@acme.com"); got.PasswordHash != "h2" {
+				t.Errorf("UserByEmail must see the new hash: %+v", got)
+			}
+			if err := s.SetUserActive(ctx, "nope", true); !errors.Is(err, ErrNotFound) {
+				t.Errorf("unknown user should be ErrNotFound, got %v", err)
+			}
+			if _, err := s.GetUser(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+				t.Errorf("GetUser unknown should be ErrNotFound, got %v", err)
+			}
 
 			// Approvals
 			now := time.Now().UTC().Truncate(time.Millisecond)
