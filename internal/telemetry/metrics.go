@@ -3,116 +3,155 @@ package telemetry
 import (
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/martinllanos/only-ai-pods/internal/cmmi"
 )
 
-// MetricsCollector recolecta métricas en formato Prometheus (SPEC-CORE-25 / Issue #4)
+// MetricsCollector holds the metrics exported in Prometheus format
+// (SPEC-CORE-25, SPEC-CORE-68). Every number comes from something measured:
+// pod requests, rate-limit blocks, the semantic cache and the CMMI report
+// generated from git when the image was built.
 type MetricsCollector struct {
 	mu                  sync.RWMutex
-	requestCount        int64
-	cacheHits           int64
-	cacheMisses         int64
+	podRequests         int64
+	podDurationUs       int64
 	rateLimitsExceeded  int64
-	totalDurationMs     int64
 	requestsByPodStatus map[string]int64
+
+	cacheStats func() (hits, misses, purged int64)
+	podCount   func() int
+	cmmi       *cmmi.Report
 }
 
 var globalCollector *MetricsCollector
 var once sync.Once
 
 func GetMetricsCollector() *MetricsCollector {
-	once.Do(func() {
-		globalCollector = &MetricsCollector{
-			requestsByPodStatus: make(map[string]int64),
-		}
-	})
+	once.Do(func() { globalCollector = NewMetricsCollector() })
 	return globalCollector
 }
 
-func (m *MetricsCollector) RecordRequest(podID, tenantID string, duration time.Duration, statusCode int) {
-	atomic.AddInt64(&m.requestCount, 1)
-	atomic.AddInt64(&m.totalDurationMs, duration.Milliseconds())
+func NewMetricsCollector() *MetricsCollector {
+	return &MetricsCollector{requestsByPodStatus: make(map[string]int64)}
+}
 
+// SetSources wires the live sources that the collector reads on demand.
+func (m *MetricsCollector) SetSources(cacheStats func() (int64, int64, int64), podCount func() int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := fmt.Sprintf("%s:%d", podID, statusCode)
-	m.requestsByPodStatus[key]++
+	m.cacheStats, m.podCount = cacheStats, podCount
 }
 
-func (m *MetricsCollector) RecordCacheHit(tenantID string) {
-	atomic.AddInt64(&m.cacheHits, 1)
+// SetCMMI sets the CMMI report; nil means no report was found.
+func (m *MetricsCollector) SetCMMI(r *cmmi.Report) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cmmi = r
 }
 
-func (m *MetricsCollector) RecordCacheMiss(tenantID string) {
-	atomic.AddInt64(&m.cacheMisses, 1)
+// RecordRequest records one AI Pod request (chat) with its latency and HTTP status.
+func (m *MetricsCollector) RecordRequest(podID string, duration time.Duration, statusCode int) {
+	if podID == "" {
+		podID = "none"
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.podRequests++
+	m.podDurationUs += duration.Microseconds()
+	m.requestsByPodStatus[fmt.Sprintf("%s:%d", podID, statusCode)]++
 }
 
-func (m *MetricsCollector) RecordRateLimitExceeded(tenantID string) {
-	atomic.AddInt64(&m.rateLimitsExceeded, 1)
+func (m *MetricsCollector) RecordRateLimitExceeded() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.rateLimitsExceeded++
 }
 
-// PrometheusExporterHandler responde al endpoint GET /metrics en formato Prometheus estándar
-func (m *MetricsCollector) PrometheusExporterHandler(c *gin.Context) {
+// Snapshot is what the admin telemetry endpoint returns.
+type Snapshot struct {
+	PodRequests      int64            `json:"pod_requests"`
+	AvgLatencyMs     float64          `json:"avg_latency_ms"`
+	CacheHits        int64            `json:"cache_hits"`
+	CacheMisses      int64            `json:"cache_misses"`
+	CachePurged      int64            `json:"cache_purged"`
+	RateLimitBlocked int64            `json:"rate_limit_blocked"`
+	ActivePods       int              `json:"active_pods_count"`
+	ByPodStatus      map[string]int64 `json:"requests_by_pod_status"`
+	CMMI             *cmmi.Report     `json:"cmmi"`
+}
+
+func (m *MetricsCollector) Snapshot() Snapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
-	reqs := atomic.LoadInt64(&m.requestCount)
-	hits := atomic.LoadInt64(&m.cacheHits)
-	misses := atomic.LoadInt64(&m.cacheMisses)
-	rateLimits := atomic.LoadInt64(&m.rateLimitsExceeded)
-	totalDur := atomic.LoadInt64(&m.totalDurationMs)
-
-	avgLatency := float64(0)
-	if reqs > 0 {
-		avgLatency = float64(totalDur) / float64(reqs)
+	s := Snapshot{
+		PodRequests:      m.podRequests,
+		RateLimitBlocked: m.rateLimitsExceeded,
+		ByPodStatus:      make(map[string]int64, len(m.requestsByPodStatus)),
+		CMMI:             m.cmmi,
 	}
-
-	hitRatio := float64(0)
-	totalCache := hits + misses
-	if totalCache > 0 {
-		hitRatio = (float64(hits) / float64(totalCache)) * 100
+	if m.podRequests > 0 {
+		s.AvgLatencyMs = float64(int64(float64(m.podDurationUs)/1000/float64(m.podRequests)*100+0.5)) / 100
 	}
+	for k, v := range m.requestsByPodStatus {
+		s.ByPodStatus[k] = v
+	}
+	if m.cacheStats != nil {
+		s.CacheHits, s.CacheMisses, s.CachePurged = m.cacheStats()
+	}
+	if m.podCount != nil {
+		s.ActivePods = m.podCount()
+	}
+	return s
+}
 
-	out := fmt.Sprintf(`# HELP aipods_requests_total Total number of processed AI Pod requests.
-# TYPE aipods_requests_total counter
-aipods_requests_total %d
+// PrometheusExporterHandler serves GET /metrics.
+func (m *MetricsCollector) PrometheusExporterHandler(c *gin.Context) {
+	c.Data(http.StatusOK, "text/plain; version=0.0.4", []byte(m.Prometheus()))
+}
 
-# HELP aipods_request_duration_avg_ms Average request latency in milliseconds.
-# TYPE aipods_request_duration_avg_ms gauge
-aipods_request_duration_avg_ms %.2f
+func (m *MetricsCollector) Prometheus() string {
+	s := m.Snapshot()
+	var b strings.Builder
+	metric := func(name, typ, help string, v any) {
+		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s %s\n%s %v\n\n", name, help, name, typ, name, v)
+	}
+	metric("aipods_requests_total", "counter", "AI Pod requests processed (chat).", s.PodRequests)
+	metric("aipods_request_duration_avg_ms", "gauge", "Average AI Pod request latency in milliseconds.", fmt.Sprintf("%.2f", s.AvgLatencyMs))
+	keys := make([]string, 0, len(s.ByPodStatus))
+	for k := range s.ByPodStatus {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > 0 {
+		b.WriteString("# HELP aipods_requests_by_pod_total AI Pod requests by pod and HTTP status.\n# TYPE aipods_requests_by_pod_total counter\n")
+		for _, k := range keys {
+			pod, status, _ := strings.Cut(k, ":")
+			fmt.Fprintf(&b, "aipods_requests_by_pod_total{pod=%q,status=%q} %d\n", pod, status, s.ByPodStatus[k])
+		}
+		b.WriteString("\n")
+	}
+	metric("aipods_cache_hits_total", "counter", "Semantic cache hits.", s.CacheHits)
+	metric("aipods_cache_misses_total", "counter", "Semantic cache misses.", s.CacheMisses)
+	hitRatio := 0.0
+	if t := s.CacheHits + s.CacheMisses; t > 0 {
+		hitRatio = float64(s.CacheHits) / float64(t) * 100
+	}
+	metric("aipods_cache_hit_ratio_percent", "gauge", "Percentage of cache hits.", fmt.Sprintf("%.2f", hitRatio))
+	metric("aipods_rate_limit_exceeded_total", "counter", "Requests blocked by the rate limiter (HTTP 429).", s.RateLimitBlocked)
+	metric("aipods_active_pods", "gauge", "AI Pods registered in the router.", s.ActivePods)
 
-# HELP aipods_cache_hits_total Total Redis semantic cache hits.
-# TYPE aipods_cache_hits_total counter
-aipods_cache_hits_total %d
-
-# HELP aipods_cache_misses_total Total Redis semantic cache misses.
-# TYPE aipods_cache_misses_total counter
-aipods_cache_misses_total %d
-
-# HELP aipods_cache_hit_ratio_percent Percentage of cache hits.
-# TYPE aipods_cache_hit_ratio_percent gauge
-aipods_cache_hit_ratio_percent %.2f
-
-# HELP aipods_rate_limit_exceeded_total Total blocked requests (HTTP 429).
-# TYPE aipods_rate_limit_exceeded_total counter
-aipods_rate_limit_exceeded_total %d
-
-# HELP aipods_cmmi_level4_spec_traceability_index Índice de trazabilidad SDD (0.0 a 1.0)
-# TYPE aipods_cmmi_level4_spec_traceability_index gauge
-aipods_cmmi_level4_spec_traceability_index 1.00
-
-# HELP aipods_cmmi_level4_defect_density_per_kloc Densidad de defectos por 1000 LOC
-# TYPE aipods_cmmi_level4_defect_density_per_kloc gauge
-aipods_cmmi_level4_defect_density_per_kloc 0.00
-
-# HELP aipods_cmmi_level4_avg_spec_lead_time_hours Tiempo promedio de entrega por spec en horas (Medición dinámica basada en historial Git v4.0.0 a v78.0.0)
-# TYPE aipods_cmmi_level4_avg_spec_lead_time_hours gauge
-aipods_cmmi_level4_avg_spec_lead_time_hours 2.18
-`, reqs, avgLatency, hits, misses, hitRatio, rateLimits)
-
-	c.Data(http.StatusOK, "text/plain; version=0.0.4", []byte(out))
+	// CMMI metrics only when the build produced a report (SPEC-CORE-68).
+	if r := s.CMMI; r != nil {
+		fmt.Fprintf(&b, "# HELP aipods_cmmi_report_info Source of the CMMI metrics: git history at build time.\n# TYPE aipods_cmmi_report_info gauge\naipods_cmmi_report_info{commit=%q,generated_at=%q,shallow=%q} 1\n\n", r.Commit, r.GeneratedAt, fmt.Sprint(r.Shallow))
+		metric("aipods_cmmi_commits_total", "gauge", "Commits in the analysed history.", r.CommitsTotal)
+		metric("aipods_cmmi_level4_spec_traceability_index", "gauge", "Share of commits that reference a SPEC, RFC or issue (0 to 1).", fmt.Sprintf("%.4f", r.TraceabilityIndex))
+		metric("aipods_cmmi_level4_defect_density_per_kloc", "gauge", "Fix commits per 1000 lines of non-test Go code.", fmt.Sprintf("%.4f", r.DefectDensity))
+		metric("aipods_cmmi_level4_avg_spec_lead_time_hours", "gauge", "Average hours from first to last commit of specs with two or more commits.", fmt.Sprintf("%.2f", r.AvgSpecLeadTimeHrs))
+	}
+	return b.String()
 }

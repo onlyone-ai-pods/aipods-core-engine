@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/martinllanos/only-ai-pods/internal/telemetry"
 )
 
 // RateLimiterConfig define cuotas por Tenant (RPM / TPM) - SPEC-CORE-07
@@ -93,6 +94,7 @@ func (r *RedisRateLimiter) Middleware() gin.HandlerFunc {
 		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 
 		if !allowed {
+			telemetry.GetMetricsCollector().RecordRateLimitExceeded()
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error":       "Rate limit exceeded (HTTP 429)",
 				"message":     "Ha superado la cuota de peticiones por minuto de su plan. Reintente en un momento.",
