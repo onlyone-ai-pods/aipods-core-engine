@@ -40,6 +40,7 @@ func newUserAPI(t *testing.T) *userAPI {
 	a := auditor{st: st, guard: guard}
 	registerAuthRoutes(r, st, guard, a)
 	registerUserRoutes(r, st, guard, a)
+	registerRAGStrategyRoutes(r, st, guard, a)
 	return &userAPI{t: t, r: r, st: st}
 }
 

@@ -72,9 +72,9 @@ func (h *HTTPSidecarAdapter) ProcessQuery(ctx context.Context, tenantID string, 
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return &pod.PodResponse{
-			PodID:     h.config.PodID,
-			Answer:    fmt.Sprintf("AI Pod Dinámico (%s): Respuesta procesada en microservicio externo (%s).", h.config.Name, h.config.EndpointURL),
-			Status:    "SUCCESS",
+			PodID:  h.config.PodID,
+			Answer: fmt.Sprintf("AI Pod Dinámico (%s): Respuesta procesada en microservicio externo (%s).", h.config.Name, h.config.EndpointURL),
+			Status: "SUCCESS",
 		}, nil
 	}
 	defer resp.Body.Close()
@@ -102,13 +102,20 @@ type DynamicSmartRouter struct {
 	// Optional real LLM + RAG (SPEC-CORE-66). Nil means prototype mode.
 	llm       llm.Client
 	retriever Retriever
+
+	// Dual RAG strategy per tenant (SPEC-CORE-70).
+	lexical       LexicalRetriever
+	strategy      StrategyResolver
+	onFallback    func()
+	vectorBreaker *CircuitBreaker
 }
 
 func NewDynamicSmartRouter() *DynamicSmartRouter {
 	r := &DynamicSmartRouter{
-		staticPods:   make(map[string]pod.BaseAIPod),
-		dynamicPods:  make(map[string]DynamicPodConfig),
-		httpAdapters: make(map[string]*HTTPSidecarAdapter),
+		staticPods:    make(map[string]pod.BaseAIPod),
+		dynamicPods:   make(map[string]DynamicPodConfig),
+		httpAdapters:  make(map[string]*HTTPSidecarAdapter),
+		vectorBreaker: NewCircuitBreaker(breakerFailures, breakerReset),
 	}
 
 	// Register Core Essential Static Pods
@@ -166,7 +173,8 @@ func (r *DynamicSmartRouter) RegisterDynamicPod(config DynamicPodConfig) {
 // the final answer from the pod result and the tenant's documents.
 func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, query string, dryRun bool) (*pod.PodResponse, error) {
 	r.mu.RLock()
-	client, retriever := r.llm, r.retriever
+	client := r.llm
+	deps := retrieval{vector: r.retriever, lexical: r.lexical, strategy: r.strategy}
 	target := r.selectPod(ctx, client, tenantID, query)
 	r.mu.RUnlock()
 
@@ -174,7 +182,7 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	if err != nil || client == nil || res == nil {
 		return res, err
 	}
-	return r.draftAnswer(ctx, client, retriever, tenantID, query, res), nil
+	return r.draftAnswer(ctx, client, deps, tenantID, query, res), nil
 }
 
 // selectPod must be called with r.mu held for reading.

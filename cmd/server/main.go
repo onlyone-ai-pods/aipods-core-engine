@@ -220,10 +220,19 @@ func main() {
 	semanticCache := rag.NewSemanticCacheManager("localhost:6379", 1*time.Hour)
 	metricsCollector.SetSources(semanticCache.Stats, smartRouter.PodCount)
 	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
-	smartRouter.SetRetriever(ragService)
+	// Dual RAG strategy per tenant (SPEC-CORE-70): lexical index in Postgres
+	// (memory without DATABASE_URL), vector search only when an embedder exists.
+	ragService.SetLexicalIndex(buildLexicalIndex(st))
+	if ai.store != nil {
+		smartRouter.SetRetriever(ragService)
+	}
+	smartRouter.SetLexicalRetriever(ragService)
+	smartRouter.SetStrategyResolver(storeStrategyResolver(st))
+	smartRouter.SetFallbackHook(metricsCollector.RecordRAGFallback)
 	if ai.llm != nil {
 		smartRouter.SetLLM(ai.llm)
 	}
+	registerRAGStrategyRoutes(r, st, guard, auditLog)
 
 	// Healthcheck Endpoint
 	r.GET("/healthz", func(c *gin.Context) {
@@ -231,7 +240,9 @@ func main() {
 			"status":       "healthy",
 			"version":      "60.0.0",
 			"llm":          ai.llmMode,
-			"vector_store": ai.store.Name(),
+			"vector_store": ai.vectorStoreName(),
+			"embedder":     ai.embedder,
+			"lexical_rag":  ragService.LexicalName(),
 			"database":     databaseStatus(c.Request.Context(), st),
 			"auth_mode":    guard.Mode,
 		})
