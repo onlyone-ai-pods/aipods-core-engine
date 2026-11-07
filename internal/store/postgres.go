@@ -330,3 +330,31 @@ func (p *Postgres) ListAudit(ctx context.Context, tenantID string, limit int) ([
 	}
 	return out, rows.Err()
 }
+
+func (p *Postgres) RecordLLMUsage(ctx context.Context, u LLMUsage) error {
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO llm_usage (tenant_id, model, purpose, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		u.TenantID, u.Model, u.Purpose, u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens)
+	return err
+}
+
+func (p *Postgres) SumLLMUsage(ctx context.Context, tenantID string, since time.Time) ([]LLMUsageTotal, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT tenant_id, model, count(*), sum(input_tokens), sum(output_tokens), sum(cache_read_tokens), sum(cache_write_tokens)
+		 FROM llm_usage WHERE ($1 = '' OR tenant_id = $1) AND created_at >= $2
+		 GROUP BY tenant_id, model ORDER BY tenant_id, model`, tenantID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []LLMUsageTotal{}
+	for rows.Next() {
+		var t LLMUsageTotal
+		if err := rows.Scan(&t.TenantID, &t.Model, &t.Requests, &t.InputTokens, &t.OutputTokens, &t.CacheReadTokens, &t.CacheWriteTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}

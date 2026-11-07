@@ -62,6 +62,29 @@ type AuditEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// LLMUsage is one model call's tokens (SPEC-CORE-69).
+type LLMUsage struct {
+	TenantID         string    `json:"tenant_id"`
+	Model            string    `json:"model"`
+	Purpose          string    `json:"purpose"`
+	InputTokens      int64     `json:"input_tokens"`
+	OutputTokens     int64     `json:"output_tokens"`
+	CacheReadTokens  int64     `json:"cache_read_tokens"`
+	CacheWriteTokens int64     `json:"cache_write_tokens"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// LLMUsageTotal sums the calls of one tenant and model.
+type LLMUsageTotal struct {
+	TenantID         string `json:"tenant_id"`
+	Model            string `json:"model"`
+	Requests         int64  `json:"requests"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheWriteTokens int64  `json:"cache_write_tokens"`
+}
+
 // Store is everything the core persists. tenantID "" in a List call means
 // all tenants; callers must only pass "" for cross-tenant roles.
 type Store interface {
@@ -92,6 +115,11 @@ type Store interface {
 
 	AppendAudit(ctx context.Context, e AuditEvent) error
 	ListAudit(ctx context.Context, tenantID string, limit int) ([]AuditEvent, error)
+
+	RecordLLMUsage(ctx context.Context, u LLMUsage) error
+	// SumLLMUsage totals calls since the given time by tenant and model,
+	// ordered by tenant then model; tenantID "" means all tenants.
+	SumLLMUsage(ctx context.Context, tenantID string, since time.Time) ([]LLMUsageTotal, error)
 
 	Ping(ctx context.Context) error
 	Name() string

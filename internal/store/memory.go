@@ -16,6 +16,7 @@ type Memory struct {
 	approvals map[string]Approval
 	secrets   map[string]Secret // by tenant/key
 	audit     []AuditEvent
+	usage     []LLMUsage
 }
 
 func NewMemory() *Memory {
@@ -255,5 +256,48 @@ func (m *Memory) ListAudit(_ context.Context, tenantID string, limit int) ([]Aud
 			out = append(out, m.audit[i])
 		}
 	}
+	return out, nil
+}
+
+func (m *Memory) RecordLLMUsage(_ context.Context, u LLMUsage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if u.CreatedAt.IsZero() {
+		u.CreatedAt = time.Now()
+	}
+	m.usage = append(m.usage, u)
+	return nil
+}
+
+func (m *Memory) SumLLMUsage(_ context.Context, tenantID string, since time.Time) ([]LLMUsageTotal, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	totals := map[[2]string]*LLMUsageTotal{}
+	for _, u := range m.usage {
+		if (tenantID != "" && u.TenantID != tenantID) || u.CreatedAt.Before(since) {
+			continue
+		}
+		k := [2]string{u.TenantID, u.Model}
+		t := totals[k]
+		if t == nil {
+			t = &LLMUsageTotal{TenantID: u.TenantID, Model: u.Model}
+			totals[k] = t
+		}
+		t.Requests++
+		t.InputTokens += u.InputTokens
+		t.OutputTokens += u.OutputTokens
+		t.CacheReadTokens += u.CacheReadTokens
+		t.CacheWriteTokens += u.CacheWriteTokens
+	}
+	out := make([]LLMUsageTotal, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, *t)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TenantID != out[j].TenantID {
+			return out[i].TenantID < out[j].TenantID
+		}
+		return out[i].Model < out[j].Model
+	})
 	return out, nil
 }

@@ -34,6 +34,8 @@ type Request struct {
 	User      string
 	MaxTokens int64
 	Effort    Effort
+	// Purpose labels the call in usage records ("classify", "answer").
+	Purpose string
 }
 
 // Client is the minimal surface the core needs from an LLM provider.
@@ -66,6 +68,7 @@ func Classify(ctx context.Context, c Client, query string, options []Option) (st
 		User:      b.String(),
 		MaxTokens: 2000,
 		Effort:    EffortLow,
+		Purpose:   "classify",
 	})
 	if err != nil {
 		return "", err

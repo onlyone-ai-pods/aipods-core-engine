@@ -58,6 +58,7 @@ func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client,
 		User:      prompt.String(),
 		MaxTokens: 16000,
 		Effort:    llm.EffortMedium,
+		Purpose:   "answer",
 	})
 	if err != nil {
 		log.Printf("[router] LLM answer failed for pod %s: %v", res.PodID, err)

@@ -15,6 +15,7 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/audit"
 	"github.com/martinllanos/only-ai-pods/internal/auth"
 	"github.com/martinllanos/only-ai-pods/internal/billing"
+	"github.com/martinllanos/only-ai-pods/internal/llm"
 	"github.com/martinllanos/only-ai-pods/internal/rag"
 	"github.com/martinllanos/only-ai-pods/internal/resilience"
 	"github.com/martinllanos/only-ai-pods/internal/router"
@@ -221,9 +222,13 @@ func main() {
 	metricsCollector.SetSources(semanticCache.Stats, smartRouter.PodCount)
 	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
 	smartRouter.SetRetriever(ragService)
+	if c, ok := ai.llm.(*llm.AnthropicClient); ok {
+		c.OnUsage = recordLLMUsage(st) // FinOps (SPEC-CORE-69)
+	}
 	if ai.llm != nil {
 		smartRouter.SetLLM(ai.llm)
 	}
+	registerFinOpsRoutes(r, st, guard)
 
 	// Healthcheck Endpoint
 	r.GET("/healthz", func(c *gin.Context) {

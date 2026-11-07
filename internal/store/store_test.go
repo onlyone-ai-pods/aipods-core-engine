@@ -155,6 +155,28 @@ func TestStoreContract(t *testing.T) {
 			if ev, _ := s.ListAudit(ctx, "tenant_acme", 10); len(ev) != 2 || ev[0].Action != "vault.reveal" {
 				t.Errorf("audit newest first: %+v", ev)
 			}
+
+			// LLM usage (SPEC-CORE-69)
+			before := time.Now().Add(-time.Minute)
+			for _, u := range []LLMUsage{
+				{TenantID: "tenant_acme", Model: "claude-opus-5-5", Purpose: "classify", InputTokens: 100, OutputTokens: 10},
+				{TenantID: "tenant_acme", Model: "claude-opus-5-5", Purpose: "answer", InputTokens: 900, OutputTokens: 300, CacheReadTokens: 50},
+				{TenantID: "tenant_otro", Model: "claude-opus-5-5", InputTokens: 7, OutputTokens: 3},
+			} {
+				if err := s.RecordLLMUsage(ctx, u); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sum, err := s.SumLLMUsage(ctx, "tenant_acme", before)
+			if err != nil || len(sum) != 1 || sum[0].Requests != 2 || sum[0].InputTokens != 1000 || sum[0].OutputTokens != 310 || sum[0].CacheReadTokens != 50 {
+				t.Errorf("usage sum for tenant: %+v %v", sum, err)
+			}
+			if all, _ := s.SumLLMUsage(ctx, "", before); len(all) != 2 || all[1].TenantID != "tenant_otro" {
+				t.Errorf("usage sum for all tenants: %+v", all)
+			}
+			if none, _ := s.SumLLMUsage(ctx, "", time.Now().Add(time.Hour)); len(none) != 0 {
+				t.Errorf("usage before since must be excluded: %+v", none)
+			}
 		})
 	}
 }

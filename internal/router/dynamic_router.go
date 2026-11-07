@@ -165,6 +165,7 @@ func (r *DynamicSmartRouter) RegisterDynamicPod(config DynamicPodConfig) {
 // RouteAndExecute picks a pod, runs it and, when an LLM is configured, drafts
 // the final answer from the pod result and the tenant's documents.
 func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, query string, dryRun bool) (*pod.PodResponse, error) {
+	ctx = llm.WithTenant(ctx, tenantID) // bill model calls to this tenant (SPEC-CORE-69)
 	r.mu.RLock()
 	client, retriever := r.llm, r.retriever
 	target := r.selectPod(ctx, client, tenantID, query)

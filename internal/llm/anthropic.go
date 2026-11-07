@@ -15,15 +15,19 @@ const DefaultModel = "claude-opus-5-5"
 type AnthropicClient struct {
 	client anthropic.Client
 	model  string
+	// OnUsage, when set, receives the token usage of every call that got a
+	// response, refusals included, since those are billed too.
+	OnUsage func(context.Context, Usage)
 }
 
 // NewAnthropicClient builds a client. An empty model uses DefaultModel.
-func NewAnthropicClient(apiKey, model string) *AnthropicClient {
+// Extra options (e.g. option.WithBaseURL in tests) are passed to the SDK.
+func NewAnthropicClient(apiKey, model string, opts ...option.RequestOption) *AnthropicClient {
 	if model == "" {
 		model = DefaultModel
 	}
 	return &AnthropicClient{
-		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
+		client: anthropic.NewClient(append([]option.RequestOption{option.WithAPIKey(apiKey)}, opts...)...),
 		model:  model,
 	}
 }
@@ -62,6 +66,21 @@ func (a *AnthropicClient) Complete(ctx context.Context, req Request) (string, er
 	resp, err := a.client.Beta.Messages.New(ctx, params)
 	if err != nil {
 		return "", err
+	}
+	if a.OnUsage != nil {
+		model := string(resp.Model)
+		if model == "" {
+			model = a.model
+		}
+		a.OnUsage(ctx, Usage{
+			TenantID:         TenantFrom(ctx),
+			Model:            model,
+			Purpose:          req.Purpose,
+			InputTokens:      resp.Usage.InputTokens,
+			OutputTokens:     resp.Usage.OutputTokens,
+			CacheReadTokens:  resp.Usage.CacheReadInputTokens,
+			CacheWriteTokens: resp.Usage.CacheCreationInputTokens,
+		})
 	}
 	if resp.StopReason == anthropic.BetaStopReasonRefusal {
 		return "", ErrRefused
