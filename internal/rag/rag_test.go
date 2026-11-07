@@ -2,6 +2,8 @@ package rag
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,13 +14,24 @@ import (
 func TestRAGPipelineAndMultiFormatIngestion(t *testing.T) {
 	ctx := context.Background()
 
-	// 1. Test PDF Ingestion Chunking with Security Gate (%PDF- header)
-	pdfIngestor := NewPDFIngestor(10, 2)
-	samplePDF := []byte("%PDF-1.7\nAFIP ARCA es el organismo recaudador fiscal en Argentina. Para solicitar un certificado digital se requiere generar una clave privada RSA.")
-
-	chunksPDF, err := pdfIngestor.IngestPDFText(ctx, "tenant_acme", "Normativa_AFIP_2026.pdf", samplePDF)
+	// 1. PDF ingestion extracts real text per page (fixture: official ARCA PDF, 4 pages)
+	pdfIngestor := NewPDFIngestor(100, 10)
+	samplePDF, err := os.ReadFile("testdata/ARCA_Manual_PuntosDeVenta.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunksPDF, err := pdfIngestor.IngestPDFText(ctx, "GLOBAL", "ARCA_Manual_PuntosDeVenta.pdf", samplePDF)
 	if err != nil || len(chunksPDF) == 0 {
 		t.Fatalf("PDF Ingestion failed: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(chunksPDF[0].Content), "punto") || strings.Contains(chunksPDF[0].Content, "endobj") {
+		t.Errorf("PDF chunk should hold extracted text, got %.120q", chunksPDF[0].Content)
+	}
+	if last := chunksPDF[len(chunksPDF)-1].PageNumber; last < 2 || last > 4 {
+		t.Errorf("page numbers should follow the real pages (1-4), last=%d", last)
+	}
+	if _, err := pdfIngestor.IngestPDFText(ctx, "GLOBAL", "vacio.pdf", []byte("%PDF-1.7\nnot really a pdf")); err == nil {
+		t.Error("a PDF without readable text must be rejected")
 	}
 
 	// 2. Test Markdown Ingestion (.md) with Section AST Chunking & Anti-Poisoning

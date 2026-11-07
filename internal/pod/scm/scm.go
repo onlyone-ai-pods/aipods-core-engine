@@ -26,15 +26,10 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 	lowerQuery := strings.ToLower(query)
 
 	var answer string
-	var citations []string
 	var dryRunRes *pod.DryRunResult
 
 	if strings.Contains(lowerQuery, "wms") || strings.Contains(lowerQuery, "ruta") || strings.Contains(lowerQuery, "push") || strings.Contains(lowerQuery, "pull") || strings.Contains(lowerQuery, "deposito") {
 		answer = fmt.Sprintf("AI Pod SCM & WMS: Para un flujo logístico de 3 pasos (Recepción -> Control de Calidad -> Stock) en la empresa (%s):\n1. Active 'Rutas de Varios Pasos' en Inventario > Ajustes.\n2. Configure las reglas Push/Pull asociando la ubicación virtual WH/Input a WH/QualityControl y finalmente WH/Stock.", tenantID)
-		citations = []string{
-			"Odoo_WMS_Push_Pull_Guide.pdf (Pagina 18)",
-			"SCM_MultiStep_Routes.pdf (Pagina 44)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -50,9 +45,6 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 		}
 	} else if strings.Contains(lowerQuery, "mrp") || strings.Contains(lowerQuery, "bom") || strings.Contains(lowerQuery, "material") || strings.Contains(lowerQuery, "kit") || strings.Contains(lowerQuery, "fabricar") {
 		answer = "AI Pod SCM & MRP: Para fabricar un kit promocional que no requiere orden de trabajo independiente:\n1. Utilice el tipo de Lista de Materiales 'Kit' (Phantom BoM).\n2. El kit no genera orden de producción; al venderse desglosa automáticamente sus componentes en el albarán de entrega."
-		citations = []string{
-			"Odoo_MRP_BoM_Manual.pdf (Pagina 22)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -68,9 +60,6 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 		}
 	} else if strings.Contains(lowerQuery, "landed") || strings.Contains(lowerQuery, "flete") || strings.Contains(lowerQuery, "costo") || strings.Contains(lowerQuery, "aduana") {
 		answer = "AI Pod SCM & Compras: Para imputar gastos de flete marítimo o aranceles aduaneros (Landed Costs):\n1. Habilite 'Landed Costs' en Compras > Ajustes.\n2. Cree un tipo de producto 'Gastos de Destino' y elija el método de prorrateo: Igual, Por Cantidad, Por Valor Actual o Por Peso."
-		citations = []string{
-			"Odoo_Landed_Costs_Spec.pdf (Pagina 15)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -86,13 +75,11 @@ func (p *SCMPod) ProcessQuery(ctx context.Context, tenantID string, query string
 		}
 	} else {
 		answer = fmt.Sprintf("AI Pod Cadena de Suministros (SCM): Asistencia en WMS, MRP y Compras activa para (%s).", tenantID)
-		citations = []string{"Manual_SCM_Logistics.pdf (Pagina 1)"}
 	}
 
 	return &pod.PodResponse{
 		PodID:        p.ID(),
 		Answer:       answer,
-		Citations:    citations,
 		DryRunResult: dryRunRes,
 		Status:       "SUCCESS",
 	}, nil

@@ -9,11 +9,14 @@ import (
 )
 
 var (
-	ErrFileTooLarge           = errors.New("file exceeds maximum allowed size limit of 10MB")
-	ErrInvalidMagicBytes      = errors.New("file magic bytes mismatch: potential polyglot file attack detected")
-	ErrMaliciousPDFObject     = errors.New("security threat: PDF contains malicious embedded executable objects (/JavaScript or /Launch)")
+	ErrFileTooLarge            = errors.New("file exceeds maximum allowed size limit of 10MB")
+	ErrInvalidMagicBytes       = errors.New("file magic bytes mismatch: potential polyglot file attack detected")
+	ErrMaliciousPDFObject      = errors.New("security threat: PDF contains malicious embedded executable objects (/JavaScript or /Launch)")
 	ErrPromptInjectionDetected = errors.New("security threat: indirect RAG prompt injection pattern detected and neutralized")
 )
+
+// maliciousPDFName matches PDF names that run code, launch programs or carry files.
+var maliciousPDFName = regexp.MustCompile(`/(JavaScript|JS|Launch|EmbeddedFiles?|SubmitForm|ImportData|RichMedia)(?:[\s/<>\[\]()%{}]|$)`)
 
 const MaxFileSize = 10 * 1024 * 1024 // 10MB Limit
 
@@ -48,13 +51,12 @@ func (s *FileSanitizer) ValidatePDFMagicBytes(data []byte) error {
 		return ErrInvalidMagicBytes
 	}
 
-	// Scan for malicious PDF executable objects
-	pdfStr := string(data)
-	maliciousObjects := []string{"/JavaScript", "/JS", "/Launch", "/EmbeddedFiles", "/AA", "/OpenAction"}
-	for _, obj := range maliciousObjects {
-		if strings.Contains(pdfStr, obj) {
-			return fmt.Errorf("%w: object %s found", ErrMaliciousPDFObject, obj)
-		}
+	// Scan for executable PDF objects. Names are matched as whole PDF name tokens,
+	// so "/AAJ..." inside base64 data or "/JSmith" does not count. /OpenAction and
+	// /AA alone are not blocked: ARCA's official PDFs use them to set the opening
+	// view, and they can only run code through the action types listed here.
+	if m := maliciousPDFName.FindSubmatch(data); m != nil {
+		return fmt.Errorf("%w: object /%s found", ErrMaliciousPDFObject, m[1])
 	}
 
 	return nil
