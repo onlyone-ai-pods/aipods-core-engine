@@ -26,15 +26,10 @@ func (p *CoreSecurityAuditPod) ProcessQuery(ctx context.Context, tenantID string
 	lowerQuery := strings.ToLower(query)
 
 	var answer string
-	var citations []string
 	var dryRunRes *pod.DryRunResult
 
 	if strings.Contains(lowerQuery, "log") || strings.Contains(lowerQuery, "auditoria") || strings.Contains(lowerQuery, "soc2") || strings.Contains(lowerQuery, "iso") {
 		answer = fmt.Sprintf("AI Pod Seguridad & Logs Core: Reporte de Auditoría SOC 2 Type II para la organización (%s):\n- Registro de Intentos de Infiltración: 0 amenazas detectadas\n- Archivos Sanitizados por FileSanitizer: 100%% aprobados\n- Aislamiento Multi-Tenant: Verificado estricto (WHERE tenant_id == '%s')\n- Log de Auditoría Inmutable: Sincronizado en PostgreSQL audit_trail.", tenantID, tenantID)
-		citations = []string{
-			"SOC2_Compliance_Audit_Spec.pdf (Pagina 10)",
-			"ISO27001_Access_Control_Policy.pdf (Pagina 33)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -50,9 +45,6 @@ func (p *CoreSecurityAuditPod) ProcessQuery(ctx context.Context, tenantID string
 		}
 	} else if strings.Contains(lowerQuery, "token") || strings.Contains(lowerQuery, "cuota") || strings.Contains(lowerQuery, "limite") {
 		answer = fmt.Sprintf("AI Pod Seguridad & Logs Core: Monitoreo de Cuotas de Tokens para (%s):\n- Cuota Asignada: 500,000 tokens/mes\n- Consumo Actual: 124,500 tokens (24.9%%)\n- Alertas de Sobrecosto: Ninguna activada", tenantID)
-		citations = []string{
-			"FinOps_Token_Quota_Control.pdf (Pagina 4)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -68,13 +60,11 @@ func (p *CoreSecurityAuditPod) ProcessQuery(ctx context.Context, tenantID string
 		}
 	} else {
 		answer = fmt.Sprintf("AI Pod Seguridad & Logs Core: Servicio de auditoría inmutable activo para (%s).", tenantID)
-		citations = []string{"Manual_Security_Audit_Core.pdf (Pagina 1)"}
 	}
 
 	return &pod.PodResponse{
 		PodID:        p.ID(),
 		Answer:       answer,
-		Citations:    citations,
 		DryRunResult: dryRunRes,
 		Status:       "SUCCESS",
 	}, nil

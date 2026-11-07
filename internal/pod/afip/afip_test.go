@@ -20,8 +20,9 @@ func TestAFIPPodCSRQuery(t *testing.T) {
 		t.Errorf("Expected PodID POD_AFIP_FISCAL, got: %s", res.PodID)
 	}
 
-	if len(res.Citations) == 0 {
-		t.Errorf("Expected citations, got 0")
+	// Pods never invent citations: real ones come only from RAG hits (SPEC-CORE-66).
+	if len(res.Citations) != 0 {
+		t.Errorf("Expected no hardcoded citations, got %v", res.Citations)
 	}
 
 	if res.DryRunResult == nil || !res.DryRunResult.IsDryRun {

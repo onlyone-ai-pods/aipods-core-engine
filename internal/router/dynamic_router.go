@@ -74,7 +74,6 @@ func (h *HTTPSidecarAdapter) ProcessQuery(ctx context.Context, tenantID string, 
 		return &pod.PodResponse{
 			PodID:     h.config.PodID,
 			Answer:    fmt.Sprintf("AI Pod Dinámico (%s): Respuesta procesada en microservicio externo (%s).", h.config.Name, h.config.EndpointURL),
-			Citations: []string{"Dynamic_Pod_Spec.json"},
 			Status:    "SUCCESS",
 		}, nil
 	}

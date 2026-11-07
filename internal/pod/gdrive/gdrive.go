@@ -26,15 +26,10 @@ func (p *GDriveSyncPod) ProcessQuery(ctx context.Context, tenantID string, query
 	lowerQuery := strings.ToLower(query)
 
 	var answer string
-	var citations []string
 	var dryRunRes *pod.DryRunResult
 
 	if strings.Contains(lowerQuery, "gdrive") || strings.Contains(lowerQuery, "google drive") || strings.Contains(lowerQuery, "carpeta") || strings.Contains(lowerQuery, "sincronizar") {
 		answer = fmt.Sprintf("AI Pod Google Drive Sync: Sincronización de carpeta en la nube vía OAuth2 para (%s):\n- Carpeta: 'Documentación Corporativa'\n- Archivos Encontrados: 14 GDocs\n- Estado de Sincronización: Conector activo en segundo plano.", tenantID)
-		citations = []string{
-			"Google_Drive_API_v3_Spec.pdf (Pagina 10)",
-			"OAuth2_Cloud_Sync_Manual.pdf (Pagina 25)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -50,9 +45,6 @@ func (p *GDriveSyncPod) ProcessQuery(ctx context.Context, tenantID string, query
 		}
 	} else if strings.Contains(lowerQuery, "gdoc") || strings.Contains(lowerQuery, "extraer") || strings.Contains(lowerQuery, "nube") {
 		answer = fmt.Sprintf("AI Pod Google Drive Sync: Extracción de deltas y texto de Google Docs para (%s).\n- Documentos indexados en Qdrant Vector Store.", tenantID)
-		citations = []string{
-			"GDocs_Text_Export_Spec.pdf (Pagina 6)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -68,13 +60,11 @@ func (p *GDriveSyncPod) ProcessQuery(ctx context.Context, tenantID string, query
 		}
 	} else {
 		answer = fmt.Sprintf("AI Pod Google Drive Sync: Conector de almacenamiento en la nube activo para (%s).", tenantID)
-		citations = []string{"Manual_GDrive_Sync.pdf (Pagina 1)"}
 	}
 
 	return &pod.PodResponse{
 		PodID:        p.ID(),
 		Answer:       answer,
-		Citations:    citations,
 		DryRunResult: dryRunRes,
 		Status:       "SUCCESS",
 	}, nil

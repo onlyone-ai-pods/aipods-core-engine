@@ -28,7 +28,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 	lowerQuery := strings.ToLower(query)
 
 	var answer string
-	var citations []string
 	var dryRunRes *pod.DryRunResult
 
 	if strings.Contains(lowerQuery, "retencion") || strings.Contains(lowerQuery, "retenciones") || strings.Contains(lowerQuery, "percepcion") || strings.Contains(lowerQuery, "sicore") || strings.Contains(lowerQuery, "sire") {
@@ -36,7 +35,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := "node scripts/mis_retenciones_arca.js --cuit=20262534538"
 			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la consulta de **Mis Retenciones / Percepciones** en el servicio Mirequa de ARCA para el CUIT (%s).\n\nComando a ejecutar:\n```bash\n%s\n```", tenantID, cmdPreview)
-			citations = []string{"ARCA_MisRetenciones_Spec_v2026.pdf"}
 
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
@@ -55,7 +53,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			}
 
 			answer = fmt.Sprintf("### 📑 Resultado de Consulta - Mis Retenciones (Mirequa ARCA)\n\nSe completó la consulta en el portal de ARCA de manera exitosa:\n\n```text\n%s\n```", string(out))
-			citations = []string{"ARCA_MisRetenciones_LiveResult.pdf"}
 		}
 
 	} else if strings.Contains(lowerQuery, "punto de venta") || strings.Contains(lowerQuery, "puntos de venta") || strings.Contains(lowerQuery, "pv") || strings.Contains(lowerQuery, "rece") || strings.Contains(lowerQuery, "linea") || strings.Contains(lowerQuery, "odoo") {
@@ -81,8 +78,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 				answer = fmt.Sprintf("🔍 **Análisis Multicolumna de Puntos de Venta (Búsqueda: '%s'):**\n\nNo se encontraron Puntos de Venta que coincidan exactamente con '%s' en las columnas (Número, Tipo, Estado).\n\nComando a ejecutar para ver lista completa:\n```bash\n%s\n```", searchTerm, searchTerm, cmdPreview)
 			}
 
-			citations = []string{"ARCA_PuntosDeVenta_Spec_v2026.pdf", "Portal_Clave_Fiscal_ARCA.pdf"}
-
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
 				ActionName:            "gestionar_puntos_de_venta_arca",
@@ -100,7 +95,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			}
 
 			answer = fmt.Sprintf("### 📍 Resultado de Búsqueda Multicolumna en ARCA ('%s')\n\nSe consultaron exitosamente los Puntos de Venta configurados:\n\n```text\n%s\n```", searchTerm, string(out))
-			citations = []string{"ARCA_PuntosDeVenta_LiveResult.pdf"}
 		}
 
 	} else if strings.Contains(lowerQuery, "comprobante") || strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "mis comprobantes") || strings.Contains(lowerQuery, "emitidos") || strings.Contains(lowerQuery, "recibidos") {
@@ -113,7 +107,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := fmt.Sprintf("node scripts/mis_comprobantes_arca.js --tipo=%s --cuit=20262534538", tipo)
 			answer = fmt.Sprintf("🔍 **[Dry-Run Simulation]** Se simula la consulta de **Mis Comprobantes (%s)** en el portal de ARCA/AFIP para el CUIT de la empresa (%s).\n\nComando a ejecutar:\n```bash\n%s\n```", tipo, tenantID, cmdPreview)
-			citations = []string{"ARCA_MisComprobantes_Spec_v2026.pdf", "Portal_Clave_Fiscal_ARCA.pdf"}
 
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
@@ -132,7 +125,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			}
 
 			answer = fmt.Sprintf("### 📄 Resultado de Consulta en ARCA - Mis Comprobantes (%s)\n\nSe completó la autenticación y consulta en el portal de ARCA de manera exitosa.\n\n```text\n%s\n```", tipo, string(out))
-			citations = []string{"ARCA_MisComprobantes_LiveResult.pdf"}
 		}
 
 	} else if strings.Contains(lowerQuery, "monotributo") || strings.Contains(lowerQuery, "estado de cuenta") || strings.Contains(lowerQuery, "cuota") || strings.Contains(lowerQuery, "categoria") || strings.Contains(lowerQuery, "categoría") || strings.Contains(lowerQuery, "periodo") || strings.Contains(lowerQuery, "período") {
@@ -148,7 +140,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			} else {
 				answer = fmt.Sprintf("🧾 **Estado de Cuenta Monotributo (Período: %s)**\n\nSe simula la consulta del estado de cuenta del Monotributo en ARCA para el CUIT del contribuyente.\n\nComando a ejecutar:\n```bash\n%s\n```", periodoFiltro, cmdPreview)
 			}
-			citations = []string{"ARCA_Monotributo_Spec_v2026.pdf", "RG_ARCA_Monotributo_2026.pdf"}
 
 			dryRunRes = &pod.DryRunResult{
 				IsDryRun:              true,
@@ -161,16 +152,11 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			}
 		} else {
 			answer = "### 🧾 Estado de Cuenta Monotributo\n\nSe completó la consulta del estado de cuenta del Monotributo."
-			citations = []string{"ARCA_Monotributo_LiveResult.pdf"}
 		}
 
 	} else if strings.Contains(lowerQuery, "csr") || strings.Contains(lowerQuery, "clave") || strings.Contains(lowerQuery, "certificado") {
 		generatedCmd := "openssl req -new -key privada.key -out pedido.csr"
 		answer = "Para generar la clave privada y el archivo CSR para AFIP/ARCA, ejecute el siguiente comando OpenSSL en su terminal:\n\n```bash\n" + generatedCmd + "\n```\n\nPosteriormente, cargue el certificado `.crt` emitido por AFIP en la configuración de la compañía."
-		citations = []string{
-			"Guia_AFIP_Certificados_v1.pdf (Pagina 4)",
-			"Normativa_ARCA_2026.pdf (Pagina 12)",
-		}
 
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
@@ -186,7 +172,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 		}
 	} else {
 		answer = "AI Pod AFIP / ARCA: Consulta recibida. Procesando normativas fiscales para la empresa (" + tenantID + ")."
-		citations = []string{"Manual_AFIP_General.pdf (Pagina 1)"}
 	}
 
 	_ = json.Marshal
@@ -194,7 +179,6 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 	return &pod.PodResponse{
 		PodID:        p.ID(),
 		Answer:       answer,
-		Citations:    citations,
 		DryRunResult: dryRunRes,
 		Status:       "SUCCESS",
 	}, nil
