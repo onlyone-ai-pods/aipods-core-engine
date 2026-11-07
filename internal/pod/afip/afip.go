@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"unicode"
 
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 )
@@ -256,12 +257,7 @@ func (p *AFIPPod) SearchPuntosDeVenta(query string) ([]PuntoDeVenta, string) {
 		return datasetPV, "Todos"
 	}
 
-	cleanQuery := lower
-	stopWords := []string{"quiero", "que", "esta", "utilizando", "usa", "usando", "me", "traiga", "el", "los", "punto", "puntos", "de", "venta", "del", "tipo", "ver", "consultar", "arca", "afip", "en", "mostrar", "buscame", "buscar"}
-	for _, word := range stopWords {
-		cleanQuery = strings.ReplaceAll(cleanQuery, word, " ")
-	}
-	cleanQuery = strings.TrimSpace(cleanQuery)
+	cleanQuery := removeStopWords(lower)
 
 	if cleanQuery == "" || cleanQuery == "activos" || cleanQuery == "activo" {
 		var result []PuntoDeVenta
@@ -359,4 +355,27 @@ func (p *AFIPPod) ParsePeriodoMonotributo(query string) (string, string) {
 
 	// Default: show all periods
 	return "todos", ""
+}
+
+var pvStopWords = map[string]bool{
+	"quiero": true, "que": true, "esta": true, "utilizando": true, "usa": true, "usando": true,
+	"me": true, "traiga": true, "el": true, "la": true, "los": true, "las": true, "punto": true,
+	"puntos": true, "de": true, "venta": true, "del": true, "tipo": true, "tipos": true, "ver": true,
+	"consultar": true, "arca": true, "afip": true, "en": true, "mostrar": true, "buscame": true,
+	"buscar": true, "cuales": true, "cuáles": true, "son": true, "para": true,
+}
+
+// removeStopWords drops whole stop words only. Removing substrings broke words
+// like "electrónica" ("el" removed) and left noise in the search term.
+func removeStopWords(q string) string {
+	words := strings.FieldsFunc(q, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	kept := words[:0]
+	for _, w := range words {
+		if !pvStopWords[w] {
+			kept = append(kept, w)
+		}
+	}
+	return strings.Join(kept, " ")
 }
