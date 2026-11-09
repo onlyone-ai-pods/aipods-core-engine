@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/martinllanos/only-ai-pods/internal/pod"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
@@ -90,7 +89,7 @@ func TestRAGPipelineAndMultiFormatIngestion(t *testing.T) {
 	}
 
 	// 6. Test Semantic Cache
-	cacheMgr := NewSemanticCacheManager("localhost:6379", 1*time.Hour)
+	cacheMgr := newTestCache(t, NewMemoryCacheBackend())
 	mockResp := &pod.PodResponse{
 		PodID:     "POD_AFIP_FINANCE",
 		Answer:    "Para generar la clave privada use OpenSSL.",
@@ -98,7 +97,7 @@ func TestRAGPipelineAndMultiFormatIngestion(t *testing.T) {
 		Status:    "SUCCESS",
 	}
 
-	cacheMgr.StoreResponse(ctx, "tenant_acme", "como genero mi clave afip?", mockResp)
+	cacheMgr.StoreResponse(ctx, "tenant_acme", "como genero mi clave afip?", mockResp, false)
 	cached, hit := cacheMgr.GetCachedResponse(ctx, "tenant_acme", "como genero mi clave afip?")
 	if !hit || cached == nil {
 		t.Errorf("Expected cache hit, got miss")

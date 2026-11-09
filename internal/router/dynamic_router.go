@@ -108,6 +108,26 @@ type DynamicSmartRouter struct {
 	strategy      StrategyResolver
 	onFallback    func()
 	vectorBreaker *CircuitBreaker
+
+	// Semantic cache (SPEC-CORE-71). Nil disables it.
+	cache ResponseCache
+}
+
+// ResponseCache is the semantic cache seen by the router (SPEC-CORE-71).
+type ResponseCache interface {
+	GetCachedResponse(ctx context.Context, tenantID, query string) (*pod.PodResponse, bool)
+	StoreResponse(ctx context.Context, tenantID, query string, resp *pod.PodResponse, global bool)
+}
+
+// globalCachePods are the pods whose answers are about public regulations
+// (ARCA manuals and tax rules) and may be shared across tenants (SPEC-CORE-71.R2).
+var globalCachePods = map[string]bool{"POD_AFIP_FISCAL": true}
+
+// SetCache enables the semantic cache. Pass nil to disable it.
+func (r *DynamicSmartRouter) SetCache(c ResponseCache) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cache = c
 }
 
 func NewDynamicSmartRouter() *DynamicSmartRouter {
@@ -171,7 +191,19 @@ func (r *DynamicSmartRouter) RegisterDynamicPod(config DynamicPodConfig) {
 
 // RouteAndExecute picks a pod, runs it and, when an LLM is configured, drafts
 // the final answer from the pod result and the tenant's documents.
+//
+// In simulation mode (dryRun) it first asks the semantic cache, tenant
+// partition and then GLOBAL; a hit skips the LLM and the search (SPEC-CORE-71.R1).
 func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, query string, dryRun bool) (*pod.PodResponse, error) {
+	r.mu.RLock()
+	cache := r.cache
+	r.mu.RUnlock()
+	if cache != nil && dryRun {
+		if hit, ok := cache.GetCachedResponse(ctx, tenantID, query); ok {
+			return hit, nil
+		}
+	}
+
 	r.mu.RLock()
 	client := r.llm
 	deps := retrieval{vector: r.retriever, lexical: r.lexical, strategy: r.strategy}
@@ -182,7 +214,20 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	if err != nil || client == nil || res == nil {
 		return res, err
 	}
-	return r.draftAnswer(ctx, client, deps, tenantID, query, res), nil
+	out, globalSources := r.draftAnswer(ctx, client, deps, tenantID, query, res)
+	if cache != nil && cacheable(out, dryRun) {
+		global := globalSources && globalCachePods[out.PodID] &&
+			!strings.Contains(strings.ToLower(out.Answer), strings.ToLower(tenantID))
+		cache.StoreResponse(ctx, tenantID, query, out, global)
+	}
+	return out, nil
+}
+
+// cacheable keeps out of the cache anything that is not a plain drafted
+// answer: actions (dry-run or approvals), non-simulated runs and answers the
+// LLM did not write (SPEC-CORE-71.R3).
+func cacheable(res *pod.PodResponse, dryRun bool) bool {
+	return dryRun && res != nil && res.DryRunResult == nil && res.Model != "" && res.Answer != ""
 }
 
 // selectPod must be called with r.mu held for reading.
