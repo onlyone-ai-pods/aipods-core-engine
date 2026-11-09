@@ -8,6 +8,7 @@ import (
 
 	"github.com/martinllanos/only-ai-pods/internal/llm"
 	"github.com/martinllanos/only-ai-pods/internal/pod"
+	"github.com/martinllanos/only-ai-pods/internal/rag"
 )
 
 const ragTopK = 5
@@ -23,11 +24,17 @@ Reglas:
 
 // draftAnswer replaces the pod's canned answer with one written by the LLM.
 // On any LLM error it logs and returns the pod result unchanged (SPEC-CORE-66.R8).
-func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client, deps retrieval, tenantID, query string, res *pod.PodResponse) *pod.PodResponse {
+// globalSources reports that it used at least one document and that every
+// document came from the GLOBAL tenant (SPEC-CORE-71.R2).
+func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client, deps retrieval, tenantID, query string, res *pod.PodResponse) (out *pod.PodResponse, globalSources bool) {
 	var docs strings.Builder
 	var citations []string
 	hits, ragUsed := r.retrieve(ctx, client, deps, tenantID, query)
+	globalSources = len(hits) > 0
 	for _, h := range hits {
+		if h.Chunk.TenantID != rag.GlobalTenant {
+			globalSources = false
+		}
 		fmt.Fprintf(&docs, "<documento cita=%q>\n%s\n</documento>\n", h.CitationID, h.Chunk.Content)
 		citations = appendUnique(citations, h.CitationID)
 	}
@@ -55,10 +62,11 @@ func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client,
 	})
 	if err != nil {
 		log.Printf("[router] LLM answer failed for pod %s: %v", res.PodID, err)
-		return res
+		return res, false
 	}
 
-	out := *res
+	drafted := *res
+	out = &drafted
 	out.Answer = answer
 	out.Model = client.Model()
 	out.RAGStrategy = ragUsed
@@ -66,7 +74,7 @@ func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client,
 		citations = appendUnique(citations, c)
 	}
 	out.Citations = citations
-	return &out
+	return out, globalSources
 }
 
 func appendUnique(list []string, v string) []string {

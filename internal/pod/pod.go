@@ -33,6 +33,11 @@ type PodResponse struct {
 	// RAGStrategy is how the documents were searched (SPEC-CORE-70): query_expansion,
 	// external_embeddings or query_expansion_fallback.
 	RAGStrategy string `json:"rag_strategy,omitempty"`
+	// Semantic cache (SPEC-CORE-71): Cached is true when the answer came from
+	// the cache; CacheScope is GLOBAL or TENANT; CacheStatus PROVISIONAL or VERIFIED.
+	Cached      bool   `json:"cached"`
+	CacheScope  string `json:"cache_scope,omitempty"`
+	CacheStatus string `json:"cache_status,omitempty"`
 }
 
 type BaseAIPod interface {

@@ -217,7 +217,12 @@ func main() {
 
 	// Initialize LLM + RAG from the environment (SPEC-CORE-66)
 	ai := buildAIStack(os.Getenv)
-	semanticCache := rag.NewSemanticCacheManager("localhost:6379", 1*time.Hour)
+	// Semantic cache shared by tenants and persisted in Redis (SPEC-CORE-71).
+	semanticCache, err := buildSemanticCache(os.Getenv, nativeVault)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	smartRouter.SetCache(semanticCache)
 	metricsCollector.SetSources(semanticCache.Stats, smartRouter.PodCount)
 	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
 	// Dual RAG strategy per tenant (SPEC-CORE-70): lexical index in Postgres
@@ -437,37 +442,12 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{
 			"status":   "ACTIVE",
 			"endpoint": "POST /api/v1/feedback",
-			"message":  "Endpoint de purga reactiva de caché Redis por feedback 👎. Envíe peticiones POST con { type: 'down', query: '...' }",
+			"message":  "Feedback de respuestas: 👍 verifica y 👎 purga la respuesta en caché. Envíe POST con { type: 'up'|'down', query: '<pregunta original>' }",
 		})
 	})
 
-	// Feedback Endpoint — Reactive Redis Cache Purge on 👎 (Issue #14 & SPEC-CORE-17)
-	r.POST("/api/v1/feedback", func(c *gin.Context) {
-		var req FeedbackRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "GLOBAL", false)
-		if !ok {
-			return
-		}
-
-		purged := false
-		if req.Type == "down" && req.Query != "" {
-			purged = semanticCache.PurgeKey(c.Request.Context(), tenantID, req.Query)
-			fmt.Printf("🧹 [REDIS CACHE PURGE] Purged cache key for tenant='%s' query='%s' due to 👎 feedback\n", tenantID, req.Query)
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":        "ACCEPTED",
-			"feedback_type": req.Type,
-			"reason":        req.Reason,
-			"cache_purged":  purged,
-			"message":       "Feedback registrado exitosamente. Caché de Redis actualizado.",
-		})
-	})
+	// Feedback Endpoint: 👍 promotes, 👎 purges the cached answer (SPEC-CORE-71.R4)
+	r.POST("/api/v1/feedback", feedbackHandler(guard, semanticCache))
 
 	// RAG Document Ingestion Endpoint (Supports .pdf, .md, .rst, .txt)
 	r.POST("/api/v1/rag/ingest", func(c *gin.Context) {

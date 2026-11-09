@@ -3,7 +3,6 @@ package bddtesting
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/martinllanos/only-ai-pods/internal/events"
 	"github.com/martinllanos/only-ai-pods/internal/rag"
@@ -17,8 +16,7 @@ func TestBDDFrameworkAndTieredEvals(t *testing.T) {
 	// Setup Dependencies
 	smartRouter := router.NewDynamicSmartRouter()
 	vectorStore := rag.NewVectorStore("localhost:6333", "aipods_vectors")
-	semanticCache := rag.NewSemanticCacheManager("localhost:6379", 1*time.Hour)
-	ragService := rag.NewRAGIngestionService(vectorStore, semanticCache)
+	ragService := rag.NewRAGIngestionService(vectorStore, nil)
 	sanitizer := security.NewFileSanitizer()
 	dlq := events.NewDeadLetterQueue(3)
 	eventBus := events.NewEventBus(dlq)
