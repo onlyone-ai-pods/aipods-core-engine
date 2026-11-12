@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/martinllanos/only-ai-pods/internal/llm"
@@ -40,6 +42,40 @@ type retrieval struct {
 	vector   Retriever
 	lexical  LexicalRetriever
 	strategy StrategyResolver
+	topK     int
+}
+
+// RAG chunks per search (SPEC-CORE-72.R6): more context makes the answer
+// stable when the query expansion changes between calls.
+const (
+	DefaultRAGTopK = 10
+	MinRAGTopK     = 1
+	MaxRAGTopK     = 20
+)
+
+// ParseRAGTopK reads RAG_TOP_K. Empty means the default; an invalid or out
+// of range value also gives the default, with ok=false so the caller warns.
+func ParseRAGTopK(v string) (topK int, ok bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return DefaultRAGTopK, true
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < MinRAGTopK || n > MaxRAGTopK {
+		return DefaultRAGTopK, false
+	}
+	return n, true
+}
+
+// SetTopK sets how many chunks each RAG search (lexical and vector) returns.
+// Values out of range fall back to DefaultRAGTopK.
+func (r *DynamicSmartRouter) SetTopK(n int) {
+	if n < MinRAGTopK || n > MaxRAGTopK {
+		n = DefaultRAGTopK
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.topK = n
 }
 
 // SetLexicalRetriever enables query expansion + lexical search.
@@ -77,7 +113,7 @@ func (r *DynamicSmartRouter) retrieve(ctx context.Context, client llm.Client, de
 
 	used := ragUsedExpansion
 	if strategy == tenant.RAGExternalEmbeddings {
-		hits, err := r.vectorSearch(tctx, deps.vector, query)
+		hits, err := r.vectorSearch(tctx, deps.vector, query, deps.topK)
 		if err == nil {
 			return hits, ragUsedVector
 		}
@@ -96,7 +132,7 @@ func (r *DynamicSmartRouter) retrieve(ctx context.Context, client llm.Client, de
 		if deps.vector == nil || used == ragUsedFallback {
 			return nil, used
 		}
-		hits, err := deps.vector.Search(tctx, query, ragTopK)
+		hits, err := deps.vector.Search(tctx, query, deps.topK)
 		if err != nil {
 			log.Printf("[router] RAG search failed for tenant %s: %v", tenantID, err)
 		}
@@ -111,7 +147,7 @@ func (r *DynamicSmartRouter) retrieve(ctx context.Context, client llm.Client, de
 		}
 		terms = append(terms, expanded...)
 	}
-	hits, err := deps.lexical.SearchLexical(tctx, terms, ragTopK)
+	hits, err := deps.lexical.SearchLexical(tctx, terms, deps.topK)
 	if err != nil {
 		log.Printf("[router] lexical search failed for tenant %s: %v", tenantID, err)
 	}
@@ -120,7 +156,7 @@ func (r *DynamicSmartRouter) retrieve(ctx context.Context, client llm.Client, de
 
 // vectorSearch calls the embeddings-backed store behind a circuit breaker and
 // a timeout.
-func (r *DynamicSmartRouter) vectorSearch(ctx context.Context, vector Retriever, query string) ([]rag.SearchResult, error) {
+func (r *DynamicSmartRouter) vectorSearch(ctx context.Context, vector Retriever, query string, topK int) ([]rag.SearchResult, error) {
 	if vector == nil {
 		return nil, rag.ErrNoVectorStore
 	}
@@ -129,7 +165,7 @@ func (r *DynamicSmartRouter) vectorSearch(ctx context.Context, vector Retriever,
 	}
 	vctx, cancel := context.WithTimeout(ctx, vectorSearchTimeout)
 	defer cancel()
-	hits, err := vector.Search(vctx, query, ragTopK)
+	hits, err := vector.Search(vctx, query, topK)
 	if err != nil {
 		r.vectorBreaker.RecordFailure()
 		return nil, err

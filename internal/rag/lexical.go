@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -36,6 +37,32 @@ func Normalize(s string) string {
 		out = s
 	}
 	return strings.ToLower(out)
+}
+
+// fileNameWords returns the words of a file name without its extension,
+// split on "_", "-", "." and spaces and normalized (SPEC-CORE-72.R7):
+// "ARCA_Monotributo_Categorias_Feb-Jul2026.pdf" -> arca monotributo
+// categorias feb jul2026. Migration 0004 applies the same rule in SQL.
+func fileNameWords(fileName string) []string {
+	base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+	parts := strings.FieldsFunc(base, func(r rune) bool {
+		return r == '_' || r == '-' || r == '.' || unicode.IsSpace(r)
+	})
+	for i, p := range parts {
+		parts[i] = Normalize(p)
+	}
+	return parts
+}
+
+// searchText is the unaccented text indexed for a chunk: its content plus
+// the words of its file name, so every page of a document matches the words
+// of its title even when the page does not repeat them (SPEC-CORE-72.R7).
+func searchText(fileName, content string) string {
+	text := Normalize(content)
+	if w := fileNameWords(fileName); len(w) > 0 {
+		text += " " + strings.Join(w, " ")
+	}
+	return text
 }
 
 // tokens splits lowercased text into letter/digit tokens; fold also removes accents.
@@ -94,7 +121,7 @@ func (p *PostgresLexical) IndexChunks(ctx context.Context, chunks []DocumentChun
 			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (chunk_id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, file_name = EXCLUDED.file_name,
 				page_number = EXCLUDED.page_number, content = EXCLUDED.content, search_text = EXCLUDED.search_text`,
-			c.ChunkID, c.TenantID, c.FileName, c.PageNumber, c.Content, Normalize(c.Content))
+			c.ChunkID, c.TenantID, c.FileName, c.PageNumber, c.Content, searchText(c.FileName, c.Content))
 	}
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
@@ -197,7 +224,7 @@ func (m *MemoryLexical) Search(ctx context.Context, terms []string, topK int) ([
 			continue
 		}
 		have := make(map[string]bool)
-		for _, w := range words(c.Content) {
+		for _, w := range words(searchText(c.FileName, c.Content)) {
 			have[stem(w)] = true
 		}
 		score := 0.0

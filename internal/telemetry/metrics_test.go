@@ -45,3 +45,41 @@ func TestPrometheusUsesMeasuredValues(t *testing.T) {
 		}
 	}
 }
+
+// SPEC-CORE-72.R4: AFIP queries are counted by intent in /metrics and in the
+// admin telemetry snapshot; other pods and unknown intents are ignored.
+func TestSPEC_CORE_72_R4_AFIPIntentCounter(t *testing.T) {
+	m := NewMetricsCollector()
+	out := m.Prometheus()
+	for _, want := range []string{
+		`aipods_afip_queries_total{intent="informational"} 0`,
+		`aipods_afip_queries_total{intent="operational"} 0`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q before any query", want)
+		}
+	}
+
+	m.RecordPodIntent("POD_AFIP_FISCAL", "informational")
+	m.RecordPodIntent("POD_AFIP_FISCAL", "operational")
+	m.RecordPodIntent("POD_SAP_ENTERPRISE", "operational")
+	m.RecordAFIPIntent("bogus")
+
+	out = m.Prometheus()
+	for _, want := range []string{
+		"# TYPE aipods_afip_queries_total counter",
+		`aipods_afip_queries_total{intent="informational"} 1`,
+		`aipods_afip_queries_total{intent="operational"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "bogus") {
+		t.Error("unknown intents must not create series")
+	}
+	s := m.Snapshot()
+	if s.AFIPByIntent["informational"] != 1 || s.AFIPByIntent["operational"] != 1 || len(s.AFIPByIntent) != 2 {
+		t.Errorf("snapshot = %v", s.AFIPByIntent)
+	}
+}

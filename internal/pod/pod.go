@@ -38,6 +38,10 @@ type PodResponse struct {
 	Cached      bool   `json:"cached"`
 	CacheScope  string `json:"cache_scope,omitempty"`
 	CacheStatus string `json:"cache_status,omitempty"`
+	// Intent is the pod's reading of the query, informational or operational
+	// (SPEC-CORE-72.R1). Internal: it feeds the aipods_afip_queries_total
+	// metric and is not part of the API contract.
+	Intent string `json:"-"`
 }
 
 type BaseAIPod interface {
