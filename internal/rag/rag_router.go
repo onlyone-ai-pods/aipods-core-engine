@@ -12,6 +12,10 @@ import (
 // ErrNoVectorStore is returned by Search when no embedding model is configured.
 var ErrNoVectorStore = errors.New("rag: no vector store configured")
 
+// ErrNoTextAfterSanitize is returned when a document has no text left once
+// NUL bytes and invalid UTF-8 are removed (SPEC-CORE-72.R5).
+var ErrNoTextAfterSanitize = errors.New("rag: document has no valid text after removing NUL bytes and invalid UTF-8")
+
 // ErrNoLexicalIndex is returned by SearchLexical when no lexical index is configured.
 var ErrNoLexicalIndex = errors.New("rag: no lexical index configured")
 
@@ -63,6 +67,13 @@ func (s *RAGIngestionService) IngestDocument(ctx context.Context, tenantID, file
 
 	if err != nil {
 		return nil, fmt.Errorf("ingestion failed for document %s: %w", fileName, err)
+	}
+
+	// Postgres TEXT rejects 0x00 and invalid UTF-8 (SQLSTATE 22021), and PDF
+	// extractors can leave both in the text (SPEC-CORE-72.R5).
+	chunks = sanitizeChunks(chunks)
+	if len(chunks) == 0 {
+		return nil, fmt.Errorf("ingestion failed for document %s: %w", fileName, ErrNoTextAfterSanitize)
 	}
 
 	if s.lexical == nil && s.vectorStore == nil {
@@ -121,4 +132,24 @@ func (s *RAGIngestionService) LexicalName() string {
 		return "disabled"
 	}
 	return s.lexical.Name()
+}
+
+// sanitizeChunks makes every chunk valid UTF-8 without NUL bytes and drops
+// the chunks left empty (SPEC-CORE-72.R5). It reuses the slice.
+func sanitizeChunks(chunks []DocumentChunk) []DocumentChunk {
+	kept := chunks[:0]
+	for _, c := range chunks {
+		c.Content = validText(c.Content)
+		c.FileName = validText(c.FileName)
+		if strings.TrimSpace(c.Content) == "" {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	return kept
+}
+
+// validText removes NUL bytes and replaces invalid UTF-8 with U+FFFD.
+func validText(s string) string {
+	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "\uFFFD")
 }
