@@ -23,6 +23,7 @@ type MetricsCollector struct {
 	rateLimitsExceeded  int64
 	ragFallbacks        int64
 	requestsByPodStatus map[string]int64
+	afipByIntent        map[string]int64
 
 	cacheStats func() (hits, misses, purged int64)
 	podCount   func() int
@@ -41,7 +42,7 @@ func GetMetricsCollector() *MetricsCollector {
 }
 
 func NewMetricsCollector() *MetricsCollector {
-	return &MetricsCollector{requestsByPodStatus: make(map[string]int64)}
+	return &MetricsCollector{requestsByPodStatus: make(map[string]int64), afipByIntent: make(map[string]int64)}
 }
 
 // SetSources wires the live sources that the collector reads on demand.
@@ -92,6 +93,35 @@ func (m *MetricsCollector) RecordRAGFallback() {
 	m.ragFallbacks++
 }
 
+// AFIP query intents exported by aipods_afip_queries_total (SPEC-CORE-72.R4).
+// Only these labels are accepted, so the metric cardinality stays fixed.
+var afipIntents = []string{"informational", "operational"}
+
+// RecordAFIPIntent counts one AFIP pod query by intent (SPEC-CORE-72.R4).
+// Unknown intents are ignored.
+func (m *MetricsCollector) RecordAFIPIntent(intent string) {
+	known := false
+	for _, i := range afipIntents {
+		known = known || i == intent
+	}
+	if !known {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.afipByIntent[intent]++
+}
+
+// RecordPodIntent is the router hook (SetIntentHook): it forwards the
+// intents reported by the AFIP pod.
+func (m *MetricsCollector) RecordPodIntent(podID, intent string) {
+	if podID == afipPodID {
+		m.RecordAFIPIntent(intent)
+	}
+}
+
+const afipPodID = "POD_AFIP_FISCAL"
+
 // Snapshot is what the admin telemetry endpoint returns.
 type Snapshot struct {
 	PodRequests      int64            `json:"pod_requests"`
@@ -103,9 +133,11 @@ type Snapshot struct {
 	RAGFallbacks     int64            `json:"rag_fallbacks"`
 	ActivePods       int              `json:"active_pods_count"`
 	ByPodStatus      map[string]int64 `json:"requests_by_pod_status"`
-	CMMI             *cmmi.Report     `json:"cmmi"`
-	BuildVersion     string           `json:"build_version,omitempty"`
-	BuildColor       string           `json:"build_color,omitempty"`
+	// AFIPByIntent counts AFIP pod queries by intent (SPEC-CORE-72.R4).
+	AFIPByIntent map[string]int64 `json:"afip_queries_by_intent"`
+	CMMI         *cmmi.Report     `json:"cmmi"`
+	BuildVersion string           `json:"build_version,omitempty"`
+	BuildColor   string           `json:"build_color,omitempty"`
 }
 
 func (m *MetricsCollector) Snapshot() Snapshot {
@@ -116,6 +148,7 @@ func (m *MetricsCollector) Snapshot() Snapshot {
 		RateLimitBlocked: m.rateLimitsExceeded,
 		RAGFallbacks:     m.ragFallbacks,
 		ByPodStatus:      make(map[string]int64, len(m.requestsByPodStatus)),
+		AFIPByIntent:     make(map[string]int64, len(afipIntents)),
 		CMMI:             m.cmmi,
 		BuildVersion:     m.buildVersion,
 		BuildColor:       m.buildColor,
@@ -125,6 +158,9 @@ func (m *MetricsCollector) Snapshot() Snapshot {
 	}
 	for k, v := range m.requestsByPodStatus {
 		s.ByPodStatus[k] = v
+	}
+	for _, i := range afipIntents {
+		s.AFIPByIntent[i] = m.afipByIntent[i]
 	}
 	if m.cacheStats != nil {
 		s.CacheHits, s.CacheMisses, s.CachePurged = m.cacheStats()
@@ -162,6 +198,11 @@ func (m *MetricsCollector) Prometheus() string {
 		}
 		b.WriteString("\n")
 	}
+	b.WriteString("# HELP aipods_afip_queries_total AFIP pod queries by intent (informational or operational).\n# TYPE aipods_afip_queries_total counter\n")
+	for _, i := range afipIntents {
+		fmt.Fprintf(&b, "aipods_afip_queries_total{intent=%q} %d\n", i, s.AFIPByIntent[i])
+	}
+	b.WriteString("\n")
 	metric("aipods_cache_hits_total", "counter", "Semantic cache hits.", s.CacheHits)
 	metric("aipods_cache_misses_total", "counter", "Semantic cache misses.", s.CacheMisses)
 	hitRatio := 0.0
