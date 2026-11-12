@@ -111,6 +111,11 @@ type DynamicSmartRouter struct {
 
 	// Semantic cache (SPEC-CORE-71). Nil disables it.
 	cache ResponseCache
+
+	// topK is how many chunks a RAG search returns (SPEC-CORE-72.R6).
+	topK int
+	// onIntent receives the intent a pod reported (SPEC-CORE-72.R4).
+	onIntent func(podID, intent string)
 }
 
 // ResponseCache is the semantic cache seen by the router (SPEC-CORE-71).
@@ -136,6 +141,7 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 		dynamicPods:   make(map[string]DynamicPodConfig),
 		httpAdapters:  make(map[string]*HTTPSidecarAdapter),
 		vectorBreaker: NewCircuitBreaker(breakerFailures, breakerReset),
+		topK:          DefaultRAGTopK,
 	}
 
 	// Register Core Essential Static Pods
@@ -152,6 +158,15 @@ func NewDynamicSmartRouter() *DynamicSmartRouter {
 	r.RegisterStaticPod(gdrive.NewGDriveSyncPod())
 
 	return r
+}
+
+// SetIntentHook is called with the intent each pod execution reports, e.g.
+// the AFIP pod's informational/operational reading (SPEC-CORE-72.R4). Cache
+// hits do not run the pod and are not reported.
+func (r *DynamicSmartRouter) SetIntentHook(f func(podID, intent string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onIntent = f
 }
 
 // SetLLM enables LLM routing and answer drafting. Pass nil to disable.
@@ -206,11 +221,19 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 
 	r.mu.RLock()
 	client := r.llm
-	deps := retrieval{vector: r.retriever, lexical: r.lexical, strategy: r.strategy}
+	deps := retrieval{vector: r.retriever, lexical: r.lexical, strategy: r.strategy, topK: r.topK}
 	target := r.selectPod(ctx, client, tenantID, query)
 	r.mu.RUnlock()
 
 	res, err := target.ProcessQuery(ctx, tenantID, query, dryRun)
+	if err == nil && res != nil && res.Intent != "" {
+		r.mu.RLock()
+		hook := r.onIntent
+		r.mu.RUnlock()
+		if hook != nil {
+			hook(res.PodID, res.Intent)
+		}
+	}
 	if err != nil || client == nil || res == nil {
 		return res, err
 	}

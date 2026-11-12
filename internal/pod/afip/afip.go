@@ -2,7 +2,6 @@ package afip
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -31,7 +30,16 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 	var answer string
 	var dryRunRes *pod.DryRunResult
 
-	if strings.Contains(lowerQuery, "retencion") || strings.Contains(lowerQuery, "retenciones") || strings.Contains(lowerQuery, "percepcion") || strings.Contains(lowerQuery, "sicore") || strings.Contains(lowerQuery, "sire") {
+	// Only operational queries run actions; questions about rules get a
+	// generic base answer without client data, so the router can cache it
+	// (SPEC-CORE-72.R1-R3).
+	intent, obj := classifyIntent(query)
+	if intent != IntentOperational {
+		obj = objNone
+	}
+
+	switch obj {
+	case objRetenciones:
 		if dryRun {
 			dynamicApprovalID := pod.NewApprovalToken()
 			cmdPreview := "node scripts/mis_retenciones_arca.js --cuit=20262534538"
@@ -56,7 +64,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			answer = fmt.Sprintf("### 📑 Resultado de Consulta - Mis Retenciones (Mirequa ARCA)\n\nSe completó la consulta en el portal de ARCA de manera exitosa:\n\n```text\n%s\n```", string(out))
 		}
 
-	} else if strings.Contains(lowerQuery, "punto de venta") || strings.Contains(lowerQuery, "puntos de venta") || strings.Contains(lowerQuery, "pv") || strings.Contains(lowerQuery, "rece") || strings.Contains(lowerQuery, "linea") || strings.Contains(lowerQuery, "odoo") {
+	case objPuntoDeVenta:
 		accion := "Consultar"
 		if strings.Contains(lowerQuery, "alta") || strings.Contains(lowerQuery, "crear") || strings.Contains(lowerQuery, "agregar") {
 			accion = "Alta"
@@ -98,7 +106,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			answer = fmt.Sprintf("### 📍 Resultado de Búsqueda Multicolumna en ARCA ('%s')\n\nSe consultaron exitosamente los Puntos de Venta configurados:\n\n```text\n%s\n```", searchTerm, string(out))
 		}
 
-	} else if strings.Contains(lowerQuery, "comprobante") || strings.Contains(lowerQuery, "factura") || strings.Contains(lowerQuery, "mis comprobantes") || strings.Contains(lowerQuery, "emitidos") || strings.Contains(lowerQuery, "recibidos") {
+	case objComprobantes:
 		tipo := "Emitidos"
 		if strings.Contains(lowerQuery, "recibido") {
 			tipo = "Recibidos"
@@ -128,8 +136,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			answer = fmt.Sprintf("### 📄 Resultado de Consulta en ARCA - Mis Comprobantes (%s)\n\nSe completó la autenticación y consulta en el portal de ARCA de manera exitosa.\n\n```text\n%s\n```", tipo, string(out))
 		}
 
-	} else if strings.Contains(lowerQuery, "monotributo") || strings.Contains(lowerQuery, "estado de cuenta") || strings.Contains(lowerQuery, "cuota") || strings.Contains(lowerQuery, "categoria") || strings.Contains(lowerQuery, "categoría") || strings.Contains(lowerQuery, "periodo") || strings.Contains(lowerQuery, "período") {
-
+	case objEstadoDeCuenta:
 		periodoFiltro, suggestion := p.ParsePeriodoMonotributo(query)
 
 		if dryRun {
@@ -155,7 +162,7 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 			answer = "### 🧾 Estado de Cuenta Monotributo\n\nSe completó la consulta del estado de cuenta del Monotributo."
 		}
 
-	} else if strings.Contains(lowerQuery, "csr") || strings.Contains(lowerQuery, "clave") || strings.Contains(lowerQuery, "certificado") {
+	case objCSR:
 		generatedCmd := "openssl req -new -key privada.key -out pedido.csr"
 		answer = "Para generar la clave privada y el archivo CSR para AFIP/ARCA, ejecute el siguiente comando OpenSSL en su terminal:\n\n```bash\n" + generatedCmd + "\n```\n\nPosteriormente, cargue el certificado `.crt` emitido por AFIP en la configuración de la compañía."
 
@@ -171,19 +178,25 @@ func (p *AFIPPod) ProcessQuery(ctx context.Context, tenantID string, query strin
 				ApprovalToken:         dynamicApprovalID,
 			}
 		}
-	} else {
-		answer = "AI Pod AFIP / ARCA: Consulta recibida. Procesando normativas fiscales para la empresa (" + tenantID + ")."
+	default:
+		intent = IntentInformational
+		answer = informationalAnswer
 	}
-
-	_ = json.Marshal
 
 	return &pod.PodResponse{
 		PodID:        p.ID(),
 		Answer:       answer,
 		DryRunResult: dryRunRes,
 		Status:       "SUCCESS",
+		Intent:       string(intent),
 	}, nil
 }
+
+// informationalAnswer is the base answer for questions about rules and
+// procedures. It must not carry the tenant ID, the CUIT or any other client
+// data: it may be shared through the GLOBAL cache (SPEC-CORE-72.R2).
+const informationalAnswer = "AI Pod AFIP / ARCA: consulta informativa sobre normativa y trámites fiscales. " +
+	"Se responde con los manuales y normas de ARCA disponibles; no se ejecuta ninguna acción sobre la cuenta del contribuyente."
 
 type PuntoDeVenta struct {
 	Numero string

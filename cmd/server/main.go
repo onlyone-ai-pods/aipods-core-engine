@@ -234,6 +234,9 @@ func main() {
 	smartRouter.SetLexicalRetriever(ragService)
 	smartRouter.SetStrategyResolver(storeStrategyResolver(st))
 	smartRouter.SetFallbackHook(metricsCollector.RecordRAGFallback)
+	// AFIP queries by intent (SPEC-CORE-72.R4) and chunks per RAG search (SPEC-CORE-72.R6).
+	smartRouter.SetIntentHook(metricsCollector.RecordPodIntent)
+	smartRouter.SetTopK(ragTopKFromEnv(os.Getenv))
 	if ai.llm != nil {
 		smartRouter.SetLLM(ai.llm)
 	}
@@ -566,42 +569,7 @@ func main() {
 	})
 
 	// Main Chat Completions Endpoint
-	r.POST("/api/v1/chat/completions", func(c *gin.Context) {
-		var req ChatRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		dryRun := true
-		if req.DryRun != nil {
-			dryRun = *req.DryRun
-		}
-
-		tenantID, ok := guard.ResolveTenant(c, req.TenantID, "", false)
-		if !ok {
-			return
-		}
-		if tenantID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id is required"})
-			return
-		}
-		ctx := tenant.WithTenantID(c.Request.Context(), tenantID)
-		started := time.Now()
-		res, err := smartRouter.RouteAndExecute(ctx, tenantID, req.Message, dryRun)
-		if err != nil {
-			metricsCollector.RecordRequest("", time.Since(started), http.StatusInternalServerError)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		metricsCollector.RecordRequest(res.PodID, time.Since(started), http.StatusOK)
-
-		if res.DryRunResult != nil && res.DryRunResult.RequiresHumanApproval && res.DryRunResult.ApprovalToken != "" {
-			recordApproval(c, st, res, tenantID)
-		}
-
-		c.JSON(http.StatusOK, res)
-	})
+	registerChatRoute(r, guard, smartRouter, st, metricsCollector)
 
 	// Admin Approvals List Endpoint
 	r.GET("/api/v1/admin/approvals", adminRoles, func(c *gin.Context) {
