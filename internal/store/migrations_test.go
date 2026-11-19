@@ -161,3 +161,35 @@ func columnExists(t *testing.T, p *Postgres, table, column string) bool {
 	}
 	return ok
 }
+
+func TestSPEC_CORE_73_R10_DynamicPodsPersist(t *testing.T) {
+	for name, open := range stores(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			s := open()
+			id := fmt.Sprintf("POD_R10_%d", time.Now().UnixNano())
+			if err := s.UpsertDynamicPod(ctx, DynamicPod{PodID: id, TenantID: "t1", Name: "a", EndpointURL: "http://a", Keywords: []string{"k1"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.UpsertDynamicPod(ctx, DynamicPod{PodID: id, TenantID: "t1", Name: "b", EndpointURL: "http://b"}); err != nil {
+				t.Fatal(err)
+			}
+			pods, err := s.ListDynamicPods(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := 0
+			for _, p := range pods {
+				if p.PodID == id {
+					found++
+					if p.Name != "b" || p.EndpointURL != "http://b" || len(p.Keywords) != 0 {
+						t.Errorf("pod = %+v, want the second version", p)
+					}
+				}
+			}
+			if found != 1 {
+				t.Fatalf("found %d rows for %s", found, id)
+			}
+		})
+	}
+}

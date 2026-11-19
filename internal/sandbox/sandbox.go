@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,81 +17,90 @@ var (
 )
 
 type SandboxSession struct {
-	SessionID   string    `json:"session_id"`
-	TenantID    string    `json:"tenant_id"`
-	FileName    string    `json:"file_name"`
-	QueryCount  int       `json:"query_count"`
-	MaxQueries  int       `json:"max_queries"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	SessionID  string    `json:"session_id"`
+	TenantID   string    `json:"tenant_id"`
+	FileName   string    `json:"file_name"`
+	QueryCount int       `json:"query_count"`
+	MaxQueries int       `json:"max_queries"`
+	CreatedAt  time.Time `json:"created_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
+// sessionTTL is the life of a session created with CreateEphemeralSession.
+const sessionTTL = 30 * time.Minute
+
+// demoSessionTTL is the life of a session created on the fly for an unknown ID.
+const demoSessionTTL = 24 * time.Hour
+
+// SessionManager runs sandbox queries. Sessions live in a SessionStore, so
+// both colors see the same session and counter (SPEC-CORE-73.R11).
 type SessionManager struct {
-	mu          sync.RWMutex
-	sessions    map[string]*SandboxSession
+	store       SessionStore
 	smartRouter *router.DynamicSmartRouter
 }
 
+// NewSessionManager keeps sessions in process memory.
 func NewSessionManager(smartRouter *router.DynamicSmartRouter) *SessionManager {
-	return &SessionManager{
-		sessions:    make(map[string]*SandboxSession),
-		smartRouter: smartRouter,
-	}
+	return NewSessionManagerWithStore(smartRouter, NewMemorySessionStore())
+}
+
+func NewSessionManagerWithStore(smartRouter *router.DynamicSmartRouter, store SessionStore) *SessionManager {
+	return &SessionManager{store: store, smartRouter: smartRouter}
 }
 
 // CreateEphemeralSession initializes a Sandbox session ("Upload your PDF & Test")
-func (m *SessionManager) CreateEphemeralSession(fileName string) *SandboxSession {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (m *SessionManager) CreateEphemeralSession(ctx context.Context, fileName string) (*SandboxSession, error) {
 	sessionUUID := uuid.New().String()
-	tenantID := fmt.Sprintf("sandbox_session_%s", sessionUUID[:8])
-
-	session := &SandboxSession{
+	now := time.Now()
+	session := SandboxSession{
 		SessionID:  sessionUUID,
-		TenantID:   tenantID,
+		TenantID:   fmt.Sprintf("sandbox_session_%s", sessionUUID[:8]),
 		FileName:   fileName,
 		QueryCount: 0,
 		MaxQueries: 999,
-		CreatedAt:  time.Now(),
-		ExpiresAt:  time.Now().Add(30 * time.Minute),
+		CreatedAt:  now,
+		ExpiresAt:  now.Add(sessionTTL),
 	}
-
-	m.sessions[sessionUUID] = session
-	return session
+	if err := m.store.Save(ctx, session); err != nil {
+		return nil, fmt.Errorf("sandbox: save session: %w", err)
+	}
+	return &session, nil
 }
 
 // ExecuteSandboxQuery processes a query within the ephemeral Sandbox session
 func (m *SessionManager) ExecuteSandboxQuery(ctx context.Context, sessionID, query string) (*pod.PodResponse, *SandboxSession, error) {
-	m.mu.Lock()
-	session, ok := m.sessions[sessionID]
-	if !ok || time.Now().After(session.ExpiresAt) {
+	session, ok, err := m.store.Get(ctx, sessionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sandbox: read session: %w", err)
+	}
+	if !ok {
 		// Auto-crear sesión de demostración efímera si es invocada sin previo registro
-		session = &SandboxSession{
+		now := time.Now()
+		session = SandboxSession{
 			SessionID:  sessionID,
 			TenantID:   "TENANT_DEMO_001",
 			FileName:   "Entorno Multi-Pod Activo",
 			QueryCount: 0,
 			MaxQueries: 999,
-			CreatedAt:  time.Now(),
-			ExpiresAt:  time.Now().Add(24 * time.Hour),
+			CreatedAt:  now,
+			ExpiresAt:  now.Add(demoSessionTTL),
 		}
-		m.sessions[sessionID] = session
 	}
 
 	if session.QueryCount >= session.MaxQueries {
-		m.mu.Unlock()
-		return nil, session, ErrMaxQueriesExceeded
+		return nil, &session, ErrMaxQueriesExceeded
 	}
 
 	session.QueryCount++
-	m.mu.Unlock()
+	if err := m.store.Save(ctx, session); err != nil {
+		return nil, &session, fmt.Errorf("sandbox: save session: %w", err)
+	}
 
 	// Execute via Smart Router with dry_run = true by default in Sandbox
 	res, err := m.smartRouter.RouteAndExecute(ctx, session.TenantID, query, true)
 	if err != nil {
-		return nil, session, err
+		return nil, &session, err
 	}
 
-	return res, session, nil
+	return res, &session, nil
 }

@@ -65,6 +65,33 @@ type AuditEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Saga is a 2FA saga of SPEC-CORE-35, shared by both colors (SPEC-CORE-73.R9).
+type Saga struct {
+	SagaID        string
+	TenantID      string
+	ActionName    string
+	IsCritical    bool
+	Status        string
+	CreatedAt     time.Time
+	ExecutedAt    *time.Time
+	CompensatedAt *time.Time
+}
+
+// SagaAwaitingOTP is the only state FinishSaga moves a saga out of.
+const SagaAwaitingOTP = "AWAITING_2FA_OTP"
+
+// DynamicPod is a pod registered at runtime, loaded by every instance
+// (SPEC-CORE-73.R10).
+type DynamicPod struct {
+	PodID       string
+	Name        string
+	TenantID    string
+	EndpointURL string
+	Keywords    []string
+	Status      string
+	UpdatedAt   time.Time
+}
+
 // Store is everything the core persists. tenantID "" in a List call means
 // all tenants; callers must only pass "" for cross-tenant roles.
 type Store interface {
@@ -98,6 +125,17 @@ type Store interface {
 	PutSecret(ctx context.Context, s Secret) (Secret, error)
 	ListSecrets(ctx context.Context, tenantID string) ([]Secret, error)
 	GetSecret(ctx context.Context, tenantID, keyName string) (Secret, error)
+
+	CreateSaga(ctx context.Context, s Saga) error
+	GetSaga(ctx context.Context, sagaID string) (Saga, error)
+	// FinishSaga moves a saga from AWAITING_2FA_OTP to status in one atomic
+	// step and stamps executed_at (COMPLETED) or compensated_at (any other).
+	// It returns ErrConflict with the current saga if it was not awaiting.
+	FinishSaga(ctx context.Context, sagaID, status string) (Saga, error)
+
+	// UpsertDynamicPod creates or replaces a pod by PodID.
+	UpsertDynamicPod(ctx context.Context, p DynamicPod) error
+	ListDynamicPods(ctx context.Context) ([]DynamicPod, error)
 
 	AppendAudit(ctx context.Context, e AuditEvent) error
 	ListAudit(ctx context.Context, tenantID string, limit int) ([]AuditEvent, error)

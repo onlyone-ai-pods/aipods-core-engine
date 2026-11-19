@@ -189,6 +189,37 @@ func (r *DynamicSmartRouter) RegisterDynamicPod(config DynamicPodConfig) {
 	r.httpAdapters[config.PodID] = NewHTTPSidecarAdapter(config)
 }
 
+// SyncDynamicPods registers the pods that are new or changed in configs, as
+// read from the store by every instance (SPEC-CORE-73.R10). Pods are never
+// removed here: there is no unregister API. It returns how many it registered.
+func (r *DynamicSmartRouter) SyncDynamicPods(configs []DynamicPodConfig) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, cfg := range configs {
+		if old, ok := r.dynamicPods[cfg.PodID]; ok && sameDynamicPod(old, cfg) {
+			continue
+		}
+		r.dynamicPods[cfg.PodID] = cfg
+		r.httpAdapters[cfg.PodID] = NewHTTPSidecarAdapter(cfg)
+		n++
+	}
+	return n
+}
+
+func sameDynamicPod(a, b DynamicPodConfig) bool {
+	if a.Name != b.Name || a.TenantID != b.TenantID || a.EndpointURL != b.EndpointURL ||
+		a.Status != b.Status || len(a.Keywords) != len(b.Keywords) {
+		return false
+	}
+	for i := range a.Keywords {
+		if a.Keywords[i] != b.Keywords[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // RouteAndExecute picks a pod, runs it and, when an LLM is configured, drafts
 // the final answer from the pod result and the tenant's documents.
 //

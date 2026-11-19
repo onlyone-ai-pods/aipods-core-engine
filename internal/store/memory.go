@@ -18,6 +18,8 @@ type Memory struct {
 	secrets   map[string]Secret // by tenant/key
 	audit     []AuditEvent
 	ragStrat  map[string]string // by tenant id; missing = default
+	sagas     map[string]Saga
+	pods      map[string]DynamicPod
 }
 
 func NewMemory() *Memory {
@@ -27,6 +29,8 @@ func NewMemory() *Memory {
 		approvals: map[string]Approval{},
 		secrets:   map[string]Secret{},
 		ragStrat:  map[string]string{},
+		sagas:     map[string]Saga{},
+		pods:      map[string]DynamicPod{},
 	}
 }
 
