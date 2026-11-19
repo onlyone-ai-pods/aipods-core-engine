@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/martinllanos/only-ai-pods/internal/embed"
 	"github.com/martinllanos/only-ai-pods/internal/llm"
@@ -18,6 +19,8 @@ type aiStack struct {
 	llm      llm.Client // nil = prototype mode
 	llmMode  string
 	embedder string
+	// llmTimeout bounds each LLM call (LLM_TIMEOUT, SPEC-CORE-73.R3); zero when there is no LLM.
+	llmTimeout time.Duration
 }
 
 var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
@@ -96,7 +99,9 @@ func buildAIStack(getenv func(string) string) aiStack {
 
 	if key := getenv("ANTHROPIC_API_KEY"); key != "" {
 		c := llm.NewAnthropicClient(key, getenv("ANTHROPIC_MODEL"))
+		c.SetTimeout(durationEnv(getenv, "LLM_TIMEOUT", llm.DefaultTimeout))
 		stack.llm = c
+		stack.llmTimeout = c.Timeout()
 		stack.llmMode = "anthropic:" + c.Model()
 	} else {
 		log.Println("WARNING: ANTHROPIC_API_KEY not set; router and answers run in prototype mode")

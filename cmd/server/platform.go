@@ -102,7 +102,11 @@ func (a auditor) record(c *gin.Context, tenantID, action, target, outcome string
 }
 
 func (a auditor) recordAs(c *gin.Context, actor, tenantID, action, target, outcome string) {
-	err := a.st.AppendAudit(c.Request.Context(), store.AuditEvent{
+	// The event must survive a client disconnect or the cancellation of
+	// in-flight requests during a drain (SPEC-CORE-73.R4).
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 2*time.Second)
+	defer cancel()
+	err := a.st.AppendAudit(ctx, store.AuditEvent{
 		TenantID: tenantID, Actor: actor, Action: action, Target: target, Outcome: outcome,
 		ClientIP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 	})
@@ -256,15 +260,6 @@ func outcome(err error) string {
 		return "error"
 	}
 	return "success"
-}
-
-func databaseStatus(ctx context.Context, st store.Store) string {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if err := st.Ping(ctx); err != nil {
-		return st.Name() + ":down"
-	}
-	return st.Name()
 }
 
 // recordApproval persists a pending human approval produced by a pod dry-run.

@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -160,25 +163,48 @@ func CORSMiddleware() gin.HandlerFunc {
 }
 
 func main() {
-	ctx := context.Background()
-	r, err := newEngine(os.Getenv)
-	if err != nil {
-		log.Fatalf("http: %v", err)
+	// SIGINT/SIGTERM start the drain sequence (SPEC-CORE-73.R1).
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, stop, os.Getenv); err != nil {
+		log.Printf("server: %v", err)
+		stop()
+		os.Exit(1)
 	}
-	r.Use(CORSMiddleware())
+}
+
+// run builds the server and serves until ctx is cancelled. Errors are returned
+// instead of log.Fatalf so the deferred closes always run: Redis first, the
+// Postgres pool last (SPEC-CORE-73.R1, R7).
+func run(ctx context.Context, stopSignals func(), getenv func(string) string) error {
+	r, err := newEngine(getenv)
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
 
 	// Persistence and authentication (SPEC-CORE-67)
-	st, err := buildStore(ctx, os.Getenv)
+	st, err := buildStore(ctx, getenv)
 	if err != nil {
-		log.Fatalf("store: %v", err)
+		return fmt.Errorf("store: %w", err)
 	}
-	defer st.Close()
-	guard, err := buildGuard(os.Getenv)
+	defer func() {
+		st.Close()
+		log.Println("shutdown: database pool closed")
+	}()
+
+	// Liveness and readiness go before the auth and rate-limit middleware
+	// (SPEC-CORE-73.R5).
+	color := strings.TrimSpace(getenv("DEPLOY_COLOR"))
+	probes := newHealth(st, buildVersion, color)
+	registerHealthRoutes(r, probes)
+	r.Use(probes.drainMiddleware(), CORSMiddleware())
+
+	guard, err := buildGuard(getenv)
 	if err != nil {
-		log.Fatalf("auth: %v", err)
+		return fmt.Errorf("auth: %w", err)
 	}
-	if err := bootstrapAdmin(ctx, st, os.Getenv); err != nil {
-		log.Fatalf("auth: bootstrap admin: %v", err)
+	if err := bootstrapAdmin(ctx, st, getenv); err != nil {
+		return fmt.Errorf("auth: bootstrap admin: %w", err)
 	}
 	guard.UserState = func(ctx context.Context, userID string) (bool, int, error) {
 		u, err := st.GetUser(ctx, userID)
@@ -199,29 +225,42 @@ func main() {
 
 	smartRouter := router.NewDynamicSmartRouter()
 	metricsCollector := telemetry.GetMetricsCollector()
-	metricsCollector.SetCMMI(loadCMMIReport(os.Getenv))
+	metricsCollector.SetCMMI(loadCMMIReport(getenv))
+	metricsCollector.SetBuildInfo(buildVersion, color)
 	swarmOrchestrator := router.NewSwarmOrchestrator(smartRouter)
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
-	vaultKey, usedDevKey, err := resolveVaultMasterKey(os.Getenv("VAULT_MASTER_KEY"), os.Getenv("ENVIRONMENT"))
+	vaultKey, usedDevKey, err := resolveVaultMasterKey(getenv("VAULT_MASTER_KEY"), getenv("ENVIRONMENT"))
 	if err != nil {
-		log.Fatalf("vault: %v", err)
+		return fmt.Errorf("vault: %w", err)
 	}
 	if usedDevKey {
 		log.Println("WARNING: VAULT_MASTER_KEY not set; using insecure development vault key")
 	}
 	nativeVault, err := vault.NewNativeVaultManager(vaultKey, st)
 	if err != nil {
-		log.Fatalf("vault: failed to initialize native vault: %v", err)
+		return fmt.Errorf("vault: failed to initialize native vault: %w", err)
 	}
 
 	// Initialize LLM + RAG from the environment (SPEC-CORE-66)
-	ai := buildAIStack(os.Getenv)
-	// Semantic cache shared by tenants and persisted in Redis (SPEC-CORE-71).
-	semanticCache, err := buildSemanticCache(os.Getenv, nativeVault)
-	if err != nil {
-		log.Fatalf("%v", err)
+	ai := buildAIStack(getenv)
+	drain := loadDrainConfig(getenv)
+	if ai.llmTimeout > 0 && drain.ShutdownTimeout <= ai.llmTimeout {
+		log.Printf("WARNING: SHUTDOWN_TIMEOUT (%s) should be longer than LLM_TIMEOUT (%s), or draining cuts LLM answers", drain.ShutdownTimeout, ai.llmTimeout)
 	}
+	// Semantic cache shared by tenants and persisted in Redis (SPEC-CORE-71).
+	semanticCache, err := buildSemanticCache(getenv, nativeVault)
+	if err != nil {
+		return err
+	}
+	// Closed before the Postgres pool (deferred later, so it runs earlier).
+	defer func() {
+		if err := semanticCache.Close(); err != nil {
+			log.Printf("shutdown: semantic cache: %v", err)
+		} else {
+			log.Println("shutdown: semantic cache closed")
+		}
+	}()
 	smartRouter.SetCache(semanticCache)
 	metricsCollector.SetSources(semanticCache.Stats, smartRouter.PodCount)
 	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
@@ -239,16 +278,19 @@ func main() {
 	}
 	registerRAGStrategyRoutes(r, st, guard, auditLog)
 
-	// Healthcheck Endpoint
+	// Healthcheck Endpoint: kept for compatibility, liveness semantics. The
+	// database state is cached so this public endpoint does not query
+	// Postgres on every call (SPEC-CORE-73.R6).
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":       "healthy",
-			"version":      "60.0.0",
+			"version":      buildVersion,
+			"color":        color,
 			"llm":          ai.llmMode,
 			"vector_store": ai.vectorStoreName(),
 			"embedder":     ai.embedder,
 			"lexical_rag":  ragService.LexicalName(),
-			"database":     databaseStatus(c.Request.Context(), st),
+			"database":     probes.databaseStatus(c.Request.Context()),
 			"auth_mode":    guard.Mode,
 		})
 	})
@@ -664,13 +706,18 @@ func main() {
 		})
 	})
 
-	port := os.Getenv("PORT")
+	port := getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-
-	fmt.Printf("🚀 AI Pods Engine Core Server running on port %s\n", port)
-	if err := r.Run(":" + port); err != nil {
-		fmt.Printf("Server failed: %v\n", err)
+	ln, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		return fmt.Errorf("http: listen: %w", err)
 	}
+	inflightCtx, cancelInflight := context.WithCancel(context.Background())
+	defer cancelInflight()
+	srv := newHTTPServer(":"+port, r, inflightCtx)
+
+	log.Printf("🚀 AI Pods Engine Core %s (color %q) running on port %s", buildVersion, color, port)
+	return serveUntilSignal(ctx, srv, ln, probes, drain, stopSignals, cancelInflight)
 }

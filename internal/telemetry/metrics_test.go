@@ -45,3 +45,17 @@ func TestPrometheusUsesMeasuredValues(t *testing.T) {
 		}
 	}
 }
+
+func TestSPEC_CORE_73_R6_BuildInfo(t *testing.T) {
+	m := NewMetricsCollector()
+	if strings.Contains(m.Prometheus(), "aipods_build_info") {
+		t.Fatal("build info published before SetBuildInfo")
+	}
+	m.SetBuildInfo("41.0.0-abc1234", "green")
+	if out := m.Prometheus(); !strings.Contains(out, `aipods_build_info{version="41.0.0-abc1234",color="green"} 1`) {
+		t.Fatalf("missing build info line:\n%s", out)
+	}
+	if s := m.Snapshot(); s.BuildVersion != "41.0.0-abc1234" || s.BuildColor != "green" {
+		t.Fatalf("snapshot = %+v", s)
+	}
+}

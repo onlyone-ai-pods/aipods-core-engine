@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"sync"
@@ -87,6 +88,15 @@ func NewSemanticCacheManager(backend CacheBackend, cipher CacheCipher, ttlProvis
 		ttlVerified = DefaultTTLVerified
 	}
 	return &SemanticCacheManager{backend: backend, cipher: cipher, ttlProvisional: ttlProvisional, ttlVerified: ttlVerified}, nil
+}
+
+// Close releases the backend's connections (the Redis client) during
+// shutdown. Backends without connections are a no-op (SPEC-CORE-73.R7).
+func (c *SemanticCacheManager) Close() error {
+	if cl, ok := c.backend.(io.Closer); ok {
+		return cl.Close()
+	}
+	return nil
 }
 
 // NormalizeQuery lowercases, removes accents, punctuation at the edges and
