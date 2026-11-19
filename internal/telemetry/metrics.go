@@ -27,6 +27,9 @@ type MetricsCollector struct {
 	cacheStats func() (hits, misses, purged int64)
 	podCount   func() int
 	cmmi       *cmmi.Report
+
+	buildVersion string
+	buildColor   string
 }
 
 var globalCollector *MetricsCollector
@@ -46,6 +49,14 @@ func (m *MetricsCollector) SetSources(cacheStats func() (int64, int64, int64), p
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cacheStats, m.podCount = cacheStats, podCount
+}
+
+// SetBuildInfo records the build version and deployment color, published as
+// aipods_build_info so each scrape says which deployment answered (SPEC-CORE-73.R6).
+func (m *MetricsCollector) SetBuildInfo(version, color string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.buildVersion, m.buildColor = version, color
 }
 
 // SetCMMI sets the CMMI report; nil means no report was found.
@@ -93,6 +104,8 @@ type Snapshot struct {
 	ActivePods       int              `json:"active_pods_count"`
 	ByPodStatus      map[string]int64 `json:"requests_by_pod_status"`
 	CMMI             *cmmi.Report     `json:"cmmi"`
+	BuildVersion     string           `json:"build_version,omitempty"`
+	BuildColor       string           `json:"build_color,omitempty"`
 }
 
 func (m *MetricsCollector) Snapshot() Snapshot {
@@ -104,6 +117,8 @@ func (m *MetricsCollector) Snapshot() Snapshot {
 		RAGFallbacks:     m.ragFallbacks,
 		ByPodStatus:      make(map[string]int64, len(m.requestsByPodStatus)),
 		CMMI:             m.cmmi,
+		BuildVersion:     m.buildVersion,
+		BuildColor:       m.buildColor,
 	}
 	if m.podRequests > 0 {
 		s.AvgLatencyMs = float64(int64(float64(m.podDurationUs)/1000/float64(m.podRequests)*100+0.5)) / 100
@@ -156,6 +171,9 @@ func (m *MetricsCollector) Prometheus() string {
 	metric("aipods_cache_hit_ratio_percent", "gauge", "Percentage of cache hits.", fmt.Sprintf("%.2f", hitRatio))
 	metric("aipods_rate_limit_exceeded_total", "counter", "Requests blocked by the rate limiter (HTTP 429).", s.RateLimitBlocked)
 	metric("aipods_active_pods", "gauge", "AI Pods registered in the router.", s.ActivePods)
+	if s.BuildVersion != "" {
+		fmt.Fprintf(&b, "# HELP aipods_build_info Build version and deployment color of this instance.\n# TYPE aipods_build_info gauge\naipods_build_info{version=%q,color=%q} 1\n\n", s.BuildVersion, s.BuildColor)
+	}
 
 	// CMMI metrics only when the build produced a report (SPEC-CORE-68).
 	if r := s.CMMI; r != nil {

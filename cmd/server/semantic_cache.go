@@ -16,16 +16,7 @@ import (
 // cacheTTL reads a Go duration ("24h", "168h") from the environment; empty or
 // invalid values fall back to the default (SPEC-CORE-71.R5).
 func cacheTTL(getenv func(string) string, name string, def time.Duration) time.Duration {
-	raw := strings.TrimSpace(getenv(name))
-	if raw == "" {
-		return def
-	}
-	d, err := time.ParseDuration(raw)
-	if err != nil || d <= 0 {
-		log.Printf("WARNING: %s=%q is not a valid duration; using %s", name, raw, def)
-		return def
-	}
-	return d
+	return durationEnv(getenv, name, def)
 }
 
 // buildSemanticCache uses Redis when REDIS_URL is set and process memory
