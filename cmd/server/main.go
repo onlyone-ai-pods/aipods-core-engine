@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -236,11 +237,32 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 	r.Use(rateLimiter.Middleware())
 
 	smartRouter := router.NewDynamicSmartRouter()
+	// Dynamic pods live in the store; every instance loads them now and
+	// rereads them in the background (SPEC-CORE-73.R10).
+	if n, err := syncDynamicPods(ctx, st, smartRouter); err != nil {
+		return fmt.Errorf("dynamic pods: %w", err)
+	} else if n > 0 {
+		log.Printf("dynamic pods: %d loaded from the store", n)
+	}
+	// Background workers stop on SIGTERM, or when run returns for any other
+	// reason; the pool closes only after they exit.
+	workerCtx, stopWorkers := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	defer func() {
+		stopWorkers()
+		workers.Wait()
+	}()
+	startDynamicPodSync(workerCtx, &workers, st, smartRouter,
+		durationEnv(getenv, "DYNAMIC_PODS_SYNC_INTERVAL", defaultDynamicPodsSyncInterval))
 	metricsCollector := telemetry.GetMetricsCollector()
 	metricsCollector.SetCMMI(loadCMMIReport(getenv))
 	metricsCollector.SetBuildInfo(buildVersion, color)
 	swarmOrchestrator := router.NewSwarmOrchestrator(smartRouter)
+	// Sandbox sessions shared by both colors through Redis (SPEC-CORE-73.R11).
 	sandboxManager := sandbox.NewSessionManager(smartRouter)
+	if redisBackend != nil {
+		sandboxManager = sandbox.NewSessionManagerWithStore(smartRouter, sandbox.NewRedisSessionStore(redisBackend.Client()))
+	}
 	odooBilling := billing.NewOdooBillingService("http://localhost:8069")
 	vaultKey, usedDevKey, err := resolveVaultMasterKey(getenv("VAULT_MASTER_KEY"), getenv("ENVIRONMENT"))
 	if err != nil {
@@ -330,7 +352,7 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 		c.JSON(http.StatusOK, swarmRes)
 	})
 
-	sagaOrchestrator := resilience.NewSagaOrchestrator()
+	sagaOrchestrator := resilience.NewSagaOrchestratorWithStore(st)
 
 	// Saga Pattern Enterprise Resilience Endpoints (Issue #13 / SPEC-CORE-35)
 	r.POST("/api/v1/saga/start", func(c *gin.Context) {
@@ -343,7 +365,7 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 		if !ok {
 			return
 		}
-		tx, err := sagaOrchestrator.StartSaga(tenantID, req.ActionName, req.IsCritical)
+		tx, err := sagaOrchestrator.StartSaga(c.Request.Context(), tenantID, req.ActionName, req.IsCritical)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -357,7 +379,7 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		tx, err := sagaOrchestrator.VerifyOTPAndExecute(req.SagaID, req.OTPCode)
+		tx, err := sagaOrchestrator.VerifyOTPAndExecute(c.Request.Context(), req.SagaID, req.OTPCode)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error(), "transaction": tx})
 			return
@@ -559,6 +581,11 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 			return
 		}
 		config.TenantID = podTenant
+		if err := st.UpsertDynamicPod(c.Request.Context(), configToPod(config)); err != nil {
+			log.Printf("dynamic pods: store: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not persist the pod"})
+			return
+		}
 		smartRouter.RegisterDynamicPod(config)
 		auditLog.record(c, podTenant, "pod.register", config.PodID, "success")
 
@@ -579,7 +606,12 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 			fileName = "documento_prueba.pdf"
 		}
 
-		session := sandboxManager.CreateEphemeralSession(fileName)
+		session, err := sandboxManager.CreateEphemeralSession(c.Request.Context(), fileName)
+		if err != nil {
+			log.Printf("sandbox: %v", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sandbox temporarily unavailable"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "CREATED",
 			"session": session,
