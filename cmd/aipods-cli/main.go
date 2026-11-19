@@ -38,6 +38,9 @@ func main() {
 	case "audit":
 		handleAuditCommand(os.Args[2:])
 
+	case "migrate":
+		handleMigrateCommand(os.Args[2:])
+
 	case "help", "--help", "-h":
 		printUsage()
 
@@ -63,6 +66,7 @@ COMANDOS DISPONIBLES:
   audit dossier --scope=global|tenant           Genera el expediente ISO 9001 / SOC 2 con firma OpenSSL
   audit verify --report=file.pdf --manifest=f   Verifica la integridad criptográfica del expediente
   audit log --tenant=TENANT_ID                  Verifica la inmutabilidad y firmas SHA-256 de permisos IAM
+  migrate contract [--database-url=URL]         Aplica las migraciones contract (SPEC-CORE-73.R16)
   version                                       Muestra la versión de aipods-cli
 
 EJEMPLOS:

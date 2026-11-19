@@ -22,7 +22,6 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/resilience"
 	"github.com/martinllanos/only-ai-pods/internal/router"
 	"github.com/martinllanos/only-ai-pods/internal/sandbox"
-	"github.com/martinllanos/only-ai-pods/internal/security"
 	"github.com/martinllanos/only-ai-pods/internal/store"
 	"github.com/martinllanos/only-ai-pods/internal/telemetry"
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
@@ -219,8 +218,21 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 	registerUserRoutes(r, st, guard, auditLog)
 	registerApprovalStatusRoute(r, st)
 
-	// Initialize Rate Limiter Middleware (Issue #2 / SPEC-CORE-07)
-	rateLimiter := security.NewRedisRateLimiter("localhost:6379", 300)
+	// One Redis client for the semantic cache and the rate limiter, closed
+	// once through the cache (SPEC-CORE-73.R7, R8, R12).
+	redisBackend, err := openRedis(getenv)
+	if err != nil {
+		return err
+	}
+	cacheOwnsRedis := false
+	defer func() {
+		if redisBackend != nil && !cacheOwnsRedis {
+			_ = redisBackend.Close()
+		}
+	}()
+
+	// Rate limiter shared by both colors through Redis (Issue #2 / SPEC-CORE-07, SPEC-CORE-73.R8)
+	rateLimiter := buildRateLimiter(redisBackend)
 	r.Use(rateLimiter.Middleware())
 
 	smartRouter := router.NewDynamicSmartRouter()
@@ -249,10 +261,11 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 		log.Printf("WARNING: SHUTDOWN_TIMEOUT (%s) should be longer than LLM_TIMEOUT (%s), or draining cuts LLM answers", drain.ShutdownTimeout, ai.llmTimeout)
 	}
 	// Semantic cache shared by tenants and persisted in Redis (SPEC-CORE-71).
-	semanticCache, err := buildSemanticCache(getenv, nativeVault)
+	semanticCache, err := buildSemanticCache(getenv, nativeVault, redisBackend)
 	if err != nil {
 		return err
 	}
+	cacheOwnsRedis = true
 	// Closed before the Postgres pool (deferred later, so it runs earlier).
 	defer func() {
 		if err := semanticCache.Close(); err != nil {

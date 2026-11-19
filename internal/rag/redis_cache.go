@@ -47,6 +47,11 @@ func (r *RedisCacheBackend) Ping(ctx context.Context) error {
 
 func (r *RedisCacheBackend) Close() error { return r.client.Close() }
 
+// Client returns the Redis client so the rate limiter shares it with the
+// cache. The backend owns it: SemanticCacheManager.Close closes it once
+// (SPEC-CORE-73.R7, R8).
+func (r *RedisCacheBackend) Client() *redis.Client { return r.client }
+
 func (r *RedisCacheBackend) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, redisOpTimeout)
 	defer cancel()
