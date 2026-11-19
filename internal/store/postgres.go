@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -16,7 +18,7 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/tenant"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/*.sql migrations/contract
 var migrationsFS embed.FS
 
 // migrationLockID serializes migrations when several core replicas start at once.
@@ -47,57 +49,148 @@ func OpenPostgres(ctx context.Context, url string) (*Postgres, error) {
 	return p, nil
 }
 
+// Lock bounds for every migration (SPEC-CORE-73.R15): a migration that cannot
+// get its lock fails the start of the new color instead of queueing behind, and
+// blocking, the queries of the color still serving.
+const (
+	migrationLockTimeout      = "5s"
+	migrationStatementTimeout = "120s"
+)
+
+// contractPrefix marks contract migrations in schema_migrations (R16).
+const contractPrefix = "contract/"
+
+// migrate applies the pending expand migrations at startup. Contract
+// migrations are left to MigrateContract (SPEC-CORE-73.R14, R16).
 func (p *Postgres) migrate(ctx context.Context) error {
+	_, err := p.applyMigrations(ctx, migrationsFS, "migrations", "")
+	return err
+}
+
+// MigrateContract applies the pending migrations of migrations/contract/
+// (aipods-cli migrate contract). It returns the versions it applied.
+func (p *Postgres) MigrateContract(ctx context.Context) ([]string, error) {
+	return p.applyMigrations(ctx, migrationsFS, "migrations/contract", contractPrefix)
+}
+
+// applyMigrations runs the *.sql files of dir (not its subdirectories) in name order, each once, under
+// an advisory lock shared by every core instance and the CLI.
+func (p *Postgres) applyMigrations(ctx context.Context, fsys fs.FS, dir, prefix string) ([]string, error) {
 	conn, err := p.pool.Acquire(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer conn.Release()
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockID); err != nil {
-		return fmt.Errorf("store: migration lock: %w", err)
+		return nil, fmt.Errorf("store: migration lock: %w", err)
 	}
 	defer conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockID)
 
 	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
-		return fmt.Errorf("store: schema_migrations: %w", err)
+		return nil, fmt.Errorf("store: schema_migrations: %w", err)
 	}
 
-	names, err := fs.Glob(migrationsFS, "migrations/*.sql")
+	names, err := fs.Glob(fsys, dir+"/*.sql")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sort.Strings(names)
+	var applied []string
 	for _, name := range names {
-		version := strings.TrimSuffix(strings.TrimPrefix(name, "migrations/"), ".sql")
+		version := prefix + strings.TrimSuffix(path.Base(name), ".sql")
 		var exists bool
 		if err := conn.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&exists); err != nil {
-			return err
+			return applied, err
 		}
 		if exists {
 			continue
 		}
-		sql, err := migrationsFS.ReadFile(name)
+		sql, err := fs.ReadFile(fsys, name)
 		if err != nil {
-			return err
+			return applied, err
 		}
-		tx, err := conn.Begin(ctx)
+		if prefix != "" && strings.Contains(strings.ToUpper(string(sql)), "CONCURRENTLY") {
+			err = applyWithoutTx(ctx, conn.Conn(), version, string(sql))
+		} else {
+			err = applyInTx(ctx, conn.Conn(), version, string(sql))
+		}
 		if err != nil {
-			return err
+			return applied, err
 		}
-		if _, err := tx.Exec(ctx, string(sql)); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("store: migration %s: %w", version, err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
-			_ = tx.Rollback(ctx)
-			return err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return err
+		applied = append(applied, version)
+	}
+	return applied, nil
+}
+
+// applyInTx runs one migration and records it in the same transaction.
+func applyInTx(ctx context.Context, conn *pgx.Conn, version, sql string) error {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout = '`+migrationLockTimeout+`'; SET LOCAL statement_timeout = '`+migrationStatementTimeout+`'`); err != nil {
+		return fmt.Errorf("store: migration %s: set timeouts: %w", version, err)
+	}
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return migrationError(version, err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// applyWithoutTx runs a CREATE INDEX CONCURRENTLY, which Postgres refuses
+// inside a transaction (SPEC-CORE-73.R16).
+func applyWithoutTx(ctx context.Context, conn *pgx.Conn, version, sql string) error {
+	if _, err := conn.Exec(ctx, `SET lock_timeout = '`+migrationLockTimeout+`'`); err != nil {
+		return err
+	}
+	defer conn.Exec(context.Background(), `RESET lock_timeout`)
+	if _, err := conn.Exec(ctx, sql); err != nil {
+		return migrationError(version, err)
+	}
+	_, err := conn.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version)
+	return err
+}
+
+func migrationError(version string, err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
+		return fmt.Errorf("store: migration %s could not get its lock within %s; another session holds it (SPEC-CORE-73.R15): %w",
+			version, migrationLockTimeout, err)
+	}
+	return fmt.Errorf("store: migration %s: %w", version, err)
+}
+
+// expandOnlyRules lists what a startup migration may not do while the
+// previous color still serves (SPEC-CORE-73.R14).
+var expandOnlyRules = []struct {
+	re   *regexp.Regexp
+	what string
+}{
+	{regexp.MustCompile(`(?i)\bDROP\s+(TABLE|COLUMN|INDEX)\b`), "DROP TABLE/COLUMN/INDEX"},
+	{regexp.MustCompile(`(?i)\bRENAME\s+(COLUMN|TO)\b`), "RENAME"},
+	{regexp.MustCompile(`(?i)\bALTER\s+COLUMN\s+\S+\s+(SET\s+DATA\s+)?TYPE\b`), "ALTER COLUMN ... TYPE"},
+	{regexp.MustCompile(`(?i)\bALTER\s+COLUMN\s+\S+\s+SET\s+NOT\s+NULL\b`), "ALTER COLUMN ... SET NOT NULL"},
+	{regexp.MustCompile(`(?i)\bSELECT\s+\*`), "SELECT *"},
+}
+
+// sqlLineComment strips "-- ..." comments before checking the rules.
+var sqlLineComment = regexp.MustCompile(`--[^\n]*`)
+
+// ExpandOnlyViolations returns the contract operations found in sql.
+func ExpandOnlyViolations(sql string) []string {
+	sql = sqlLineComment.ReplaceAllString(sql, "")
+	var out []string
+	for _, r := range expandOnlyRules {
+		if r.re.MatchString(sql) {
+			out = append(out, r.what)
 		}
 	}
-	return nil
+	return out
 }
 
 func (p *Postgres) Name() string                   { return "postgres" }

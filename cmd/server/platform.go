@@ -16,12 +16,21 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/store"
 )
 
+// isProduction reports whether ENVIRONMENT=production.
+func isProduction(getenv func(string) string) bool {
+	return strings.EqualFold(strings.TrimSpace(getenv("ENVIRONMENT")), "production")
+}
+
 // buildStore opens Postgres when DATABASE_URL is set (SPEC-CORE-67.R5).
 // A configured database that cannot be reached is fatal: silently falling back
-// to memory would lose approvals and secrets.
+// to memory would lose approvals and secrets. In production DATABASE_URL is
+// mandatory (SPEC-CORE-73.R12).
 func buildStore(ctx context.Context, getenv func(string) string) (store.Store, error) {
-	url := getenv("DATABASE_URL")
+	url := strings.TrimSpace(getenv("DATABASE_URL"))
 	if url == "" {
+		if isProduction(getenv) {
+			return nil, errors.New("DATABASE_URL is required when ENVIRONMENT=production")
+		}
 		log.Println("WARNING: DATABASE_URL not set; approvals, vault and audit live in memory and are lost on restart")
 		return store.NewMemory(), nil
 	}
@@ -46,7 +55,7 @@ func buildGuard(getenv func(string) string) (*auth.Guard, error) {
 		}
 		issuer = auth.NewIssuer(key, 8*time.Hour)
 	} else {
-		if mode == auth.ModeEnforce && strings.EqualFold(getenv("ENVIRONMENT"), "production") {
+		if mode == auth.ModeEnforce && isProduction(getenv) {
 			return nil, errors.New("AUTH_SIGNING_KEY is required when AUTH_MODE=enforce in production")
 		}
 		log.Println("WARNING: AUTH_SIGNING_KEY not set; using an ephemeral key (tokens die on restart)")
@@ -68,6 +77,8 @@ func buildGuard(getenv func(string) string) (*auth.Guard, error) {
 }
 
 // bootstrapAdmin creates the first platform_admin when the users table is empty.
+// When two instances (blue and green) race on an empty table, the loser gets
+// ErrConflict on the unique email and treats it as success (SPEC-CORE-73.R13).
 func bootstrapAdmin(ctx context.Context, st store.Store, getenv func(string) string) error {
 	email, password := strings.TrimSpace(getenv("AUTH_BOOTSTRAP_EMAIL")), getenv("AUTH_BOOTSTRAP_PASSWORD")
 	if email == "" || password == "" {
@@ -85,6 +96,10 @@ func bootstrapAdmin(ctx context.Context, st store.Store, getenv func(string) str
 		ID: uuid.NewString(), TenantID: "GLOBAL", Email: email, PasswordHash: hash,
 		Roles: []string{auth.RolePlatformAdmin}, Active: true,
 	}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			log.Printf("auth: bootstrap platform_admin %s already created by another instance", email)
+			return nil
+		}
 		return err
 	}
 	log.Printf("auth: created bootstrap platform_admin %s", email)
