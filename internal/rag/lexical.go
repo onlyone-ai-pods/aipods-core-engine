@@ -2,10 +2,12 @@ package rag
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
@@ -103,9 +105,64 @@ func BuildTSQuery(terms []string, fold bool) string {
 	return strings.Join(parts, " | ")
 }
 
+// orFillStopWords are left out of the OR fill (SPEC-CORE-72.R9), compared
+// without accents. The Postgres spanish dictionary already drops "como" or
+// "cuales", but not "cómo" or "cuáles", which open most questions and would
+// fill the places with any page that has them.
+var orFillStopWords = map[string]bool{
+	"a": true, "al": true, "como": true, "con": true, "cual": true, "cuales": true, "cuando": true, "de": true,
+	"del": true, "donde": true, "e": true, "el": true, "en": true, "es": true, "esta": true, "este": true,
+	"hay": true, "la": true, "las": true, "le": true, "lo": true, "los": true, "mas": true, "me": true,
+	"mi": true, "o": true, "para": true, "por": true, "que": true, "quien": true, "se": true, "si": true,
+	"sin": true, "son": true, "su": true, "sus": true, "u": true, "un": true, "una": true, "y": true,
+}
+
+func isORFillStopWord(w string) bool { return orFillStopWords[Normalize(w)] }
+
+// BuildTSQueryAny is the query of the OR fill (SPEC-CORE-72.R9): every word
+// of every term, joined with OR (|) and without repeats or stop words. It
+// follows the same rules as BuildTSQuery: only letter and digit tokens reach
+// the query, so no tsquery syntax can be injected.
+func BuildTSQueryAny(terms []string, fold bool) string {
+	seen := make(map[string]bool)
+	var parts []string
+	for _, term := range terms {
+		for _, w := range tokens(term, fold) {
+			if !seen[w] && !isORFillStopWord(w) {
+				seen[w] = true
+				parts = append(parts, w)
+			}
+		}
+	}
+	return strings.Join(parts, " | ")
+}
+
+// orFallbackHook is called each time the OR fill adds at least one chunk to
+// a search (SPEC-CORE-72.R9). It is atomic so it can be set while searching.
+type orFallbackHook struct{ fn atomic.Pointer[func()] }
+
+// SetORFallbackHook sets the function called when the OR fill contributes
+// chunks (cmd/server wires the aipods_rag_lexical_or_fallback_total counter).
+func (h *orFallbackHook) SetORFallbackHook(fn func()) {
+	if fn == nil {
+		h.fn.Store(nil)
+		return
+	}
+	h.fn.Store(&fn)
+}
+
+func (h *orFallbackHook) fire() {
+	if fn := h.fn.Load(); fn != nil {
+		(*fn)()
+	}
+}
+
 // PostgresLexical is the production lexical index: Spanish full-text search
 // over the rag_chunks table (migration 0003).
-type PostgresLexical struct{ pool *pgxpool.Pool }
+type PostgresLexical struct {
+	pool *pgxpool.Pool
+	orFallbackHook
+}
 
 func NewPostgresLexical(pool *pgxpool.Pool) *PostgresLexical { return &PostgresLexical{pool: pool} }
 
@@ -139,17 +196,52 @@ func (p *PostgresLexical) Search(ctx context.Context, terms []string, topK int) 
 	if err != nil {
 		return nil, ErrNoTenant
 	}
+	if topK <= 0 {
+		return nil, nil
+	}
 	accented, folded := BuildTSQuery(terms, false), BuildTSQuery(terms, true)
 	if folded == "" {
 		return nil, nil
+	}
+	out, err := p.query(ctx, tenantID, accented, folded, nil, topK)
+	if err != nil {
+		return nil, fmt.Errorf("lexical search: %w", err)
+	}
+	if len(out) >= topK {
+		return out, nil
+	}
+	// OR fill (SPEC-CORE-72.R9): any word of any term completes the
+	// missing places, after the first results and without repeating them.
+	anyAccented, anyFolded := BuildTSQueryAny(terms, false), BuildTSQueryAny(terms, true)
+	if anyFolded == "" {
+		return out, nil
+	}
+	seen := make([]string, 0, len(out))
+	for _, r := range out {
+		seen = append(seen, r.Chunk.ChunkID)
+	}
+	fill, err := p.query(ctx, tenantID, anyAccented, anyFolded, seen, topK-len(out))
+	if err != nil {
+		return nil, fmt.Errorf("lexical OR fill: %w", err)
+	}
+	if len(fill) > 0 {
+		p.fire()
+	}
+	return append(out, fill...), nil
+}
+
+// query runs one full-text search, best first, skipping the chunk IDs in exclude.
+func (p *PostgresLexical) query(ctx context.Context, tenantID, accented, folded string, exclude []string, limit int) ([]SearchResult, error) {
+	if exclude == nil {
+		exclude = []string{}
 	}
 	// INVARIANT: tenant_id IN (current, GLOBAL), as in the vector stores.
 	rows, err := p.pool.Query(ctx, `
 		SELECT chunk_id, tenant_id, file_name, page_number, content, ts_rank_cd(tsv, q) AS score
 		FROM rag_chunks, (SELECT to_tsquery('spanish', $1) || to_tsquery('spanish', $2) AS q) AS query
-		WHERE tsv @@ q AND tenant_id IN ($3, 'GLOBAL')
+		WHERE tsv @@ q AND tenant_id IN ($3, 'GLOBAL') AND NOT (chunk_id = ANY($5::text[]))
 		ORDER BY score DESC, chunk_id
-		LIMIT $4`, accented, folded, tenantID, topK)
+		LIMIT $4`, accented, folded, tenantID, limit, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +266,7 @@ func (p *PostgresLexical) Search(ctx context.Context, terms []string, topK int) 
 type MemoryLexical struct {
 	mu     sync.RWMutex
 	chunks map[string]DocumentChunk
+	orFallbackHook
 }
 
 func NewMemoryLexical() *MemoryLexical { return &MemoryLexical{chunks: map[string]DocumentChunk{}} }
@@ -206,11 +299,18 @@ func (m *MemoryLexical) Search(ctx context.Context, terms []string, topK int) ([
 	if err != nil {
 		return nil, ErrNoTenant
 	}
+	if topK <= 0 {
+		return nil, nil
+	}
 	var queries [][]string
+	anyWords := make(map[string]bool)
 	for _, t := range terms {
 		var ws []string
 		for _, w := range words(t) {
 			ws = append(ws, stem(w))
+			if !isORFillStopWord(w) {
+				anyWords[stem(w)] = true
+			}
 		}
 		if len(ws) > 0 {
 			queries = append(queries, ws)
@@ -218,7 +318,7 @@ func (m *MemoryLexical) Search(ctx context.Context, terms []string, topK int) ([
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var out []SearchResult
+	var out, fill []SearchResult
 	for _, c := range m.chunks {
 		if c.TenantID != tenantID && c.TenantID != "GLOBAL" {
 			continue
@@ -242,16 +342,40 @@ func (m *MemoryLexical) Search(ctx context.Context, terms []string, topK int) ([
 		}
 		if score > 0 {
 			out = append(out, SearchResult{Chunk: c, Score: score, CitationID: citationFor(c)})
+			continue
+		}
+		// OR fill candidate (SPEC-CORE-72.R9): scored by how many of the
+		// words it has, a rough stand-in for ts_rank_cd.
+		anyScore := 0.0
+		for w := range anyWords {
+			if have[w] {
+				anyScore++
+			}
+		}
+		if anyScore > 0 {
+			fill = append(fill, SearchResult{Chunk: c, Score: anyScore, CitationID: citationFor(c)})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Score != out[j].Score {
-			return out[i].Score > out[j].Score
+	sortResults(out)
+	if len(out) >= topK {
+		return out[:topK], nil
+	}
+	sortResults(fill)
+	if missing := topK - len(out); len(fill) > missing {
+		fill = fill[:missing]
+	}
+	if len(fill) > 0 {
+		m.fire()
+	}
+	return append(out, fill...), nil
+}
+
+// sortResults orders by score, best first, and by chunk ID on ties.
+func sortResults(rs []SearchResult) {
+	sort.Slice(rs, func(i, j int) bool {
+		if rs[i].Score != rs[j].Score {
+			return rs[i].Score > rs[j].Score
 		}
-		return out[i].Chunk.ChunkID < out[j].Chunk.ChunkID
+		return rs[i].Chunk.ChunkID < rs[j].Chunk.ChunkID
 	})
-	if len(out) > topK {
-		out = out[:topK]
-	}
-	return out, nil
 }
