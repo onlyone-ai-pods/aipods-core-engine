@@ -21,12 +21,17 @@ type SetRAGStrategyRequest struct {
 }
 
 // buildLexicalIndex uses Postgres full-text search when the store is Postgres.
-func buildLexicalIndex(st store.Store) rag.LexicalIndex {
+// onORFallback is called each time the OR fill adds chunks (SPEC-CORE-72.R9).
+func buildLexicalIndex(st store.Store, onORFallback func()) rag.LexicalIndex {
 	if pg, ok := st.(*store.Postgres); ok {
-		return rag.NewPostgresLexical(pg.Pool())
+		idx := rag.NewPostgresLexical(pg.Pool())
+		idx.SetORFallbackHook(onORFallback)
+		return idx
 	}
 	log.Println("WARNING: lexical RAG index lives in memory (no DATABASE_URL); documents are lost on restart")
-	return rag.NewMemoryLexical()
+	idx := rag.NewMemoryLexical()
+	idx.SetORFallbackHook(onORFallback)
+	return idx
 }
 
 // storeStrategyResolver reads the tenant's strategy; tenants without a row

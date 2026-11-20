@@ -22,6 +22,7 @@ type MetricsCollector struct {
 	podDurationUs       int64
 	rateLimitsExceeded  int64
 	ragFallbacks        int64
+	lexicalORFallbacks  int64
 	requestsByPodStatus map[string]int64
 	afipByIntent        map[string]int64
 
@@ -93,6 +94,14 @@ func (m *MetricsCollector) RecordRAGFallback() {
 	m.ragFallbacks++
 }
 
+// RecordLexicalORFallback counts lexical searches whose OR fill added at
+// least one chunk (SPEC-CORE-72.R9).
+func (m *MetricsCollector) RecordLexicalORFallback() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.lexicalORFallbacks++
+}
+
 // AFIP query intents exported by aipods_afip_queries_total (SPEC-CORE-72.R4).
 // Only these labels are accepted, so the metric cardinality stays fixed.
 var afipIntents = []string{"informational", "operational"}
@@ -124,15 +133,17 @@ const afipPodID = "POD_AFIP_FISCAL"
 
 // Snapshot is what the admin telemetry endpoint returns.
 type Snapshot struct {
-	PodRequests      int64            `json:"pod_requests"`
-	AvgLatencyMs     float64          `json:"avg_latency_ms"`
-	CacheHits        int64            `json:"cache_hits"`
-	CacheMisses      int64            `json:"cache_misses"`
-	CachePurged      int64            `json:"cache_purged"`
-	RateLimitBlocked int64            `json:"rate_limit_blocked"`
-	RAGFallbacks     int64            `json:"rag_fallbacks"`
-	ActivePods       int              `json:"active_pods_count"`
-	ByPodStatus      map[string]int64 `json:"requests_by_pod_status"`
+	PodRequests      int64   `json:"pod_requests"`
+	AvgLatencyMs     float64 `json:"avg_latency_ms"`
+	CacheHits        int64   `json:"cache_hits"`
+	CacheMisses      int64   `json:"cache_misses"`
+	CachePurged      int64   `json:"cache_purged"`
+	RateLimitBlocked int64   `json:"rate_limit_blocked"`
+	RAGFallbacks     int64   `json:"rag_fallbacks"`
+	// LexicalORFallbacks counts lexical searches completed by the OR fill (SPEC-CORE-72.R9).
+	LexicalORFallbacks int64            `json:"rag_lexical_or_fallbacks"`
+	ActivePods         int              `json:"active_pods_count"`
+	ByPodStatus        map[string]int64 `json:"requests_by_pod_status"`
 	// AFIPByIntent counts AFIP pod queries by intent (SPEC-CORE-72.R4).
 	AFIPByIntent map[string]int64 `json:"afip_queries_by_intent"`
 	CMMI         *cmmi.Report     `json:"cmmi"`
@@ -144,14 +155,15 @@ func (m *MetricsCollector) Snapshot() Snapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	s := Snapshot{
-		PodRequests:      m.podRequests,
-		RateLimitBlocked: m.rateLimitsExceeded,
-		RAGFallbacks:     m.ragFallbacks,
-		ByPodStatus:      make(map[string]int64, len(m.requestsByPodStatus)),
-		AFIPByIntent:     make(map[string]int64, len(afipIntents)),
-		CMMI:             m.cmmi,
-		BuildVersion:     m.buildVersion,
-		BuildColor:       m.buildColor,
+		PodRequests:        m.podRequests,
+		RateLimitBlocked:   m.rateLimitsExceeded,
+		RAGFallbacks:       m.ragFallbacks,
+		LexicalORFallbacks: m.lexicalORFallbacks,
+		ByPodStatus:        make(map[string]int64, len(m.requestsByPodStatus)),
+		AFIPByIntent:       make(map[string]int64, len(afipIntents)),
+		CMMI:               m.cmmi,
+		BuildVersion:       m.buildVersion,
+		BuildColor:         m.buildColor,
 	}
 	if m.podRequests > 0 {
 		s.AvgLatencyMs = float64(int64(float64(m.podDurationUs)/1000/float64(m.podRequests)*100+0.5)) / 100
@@ -184,6 +196,7 @@ func (m *MetricsCollector) Prometheus() string {
 	}
 	metric("aipods_requests_total", "counter", "AI Pod requests processed (chat).", s.PodRequests)
 	metric("aipods_rag_fallback_total", "counter", "RAG searches that fell back from external embeddings to lexical search.", s.RAGFallbacks)
+	metric("aipods_rag_lexical_or_fallback_total", "counter", "Lexical RAG searches completed by the OR fill (any word of any term).", s.LexicalORFallbacks)
 	metric("aipods_request_duration_avg_ms", "gauge", "Average AI Pod request latency in milliseconds.", fmt.Sprintf("%.2f", s.AvgLatencyMs))
 	keys := make([]string, 0, len(s.ByPodStatus))
 	for k := range s.ByPodStatus {

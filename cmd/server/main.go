@@ -301,7 +301,8 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 	ragService := rag.NewRAGIngestionService(ai.store, semanticCache)
 	// Dual RAG strategy per tenant (SPEC-CORE-70): lexical index in Postgres
 	// (memory without DATABASE_URL), vector search only when an embedder exists.
-	ragService.SetLexicalIndex(buildLexicalIndex(st))
+	// The OR fill of the lexical index is counted in /metrics (SPEC-CORE-72.R9).
+	ragService.SetLexicalIndex(buildLexicalIndex(st, metricsCollector.RecordLexicalORFallback))
 	if ai.store != nil {
 		smartRouter.SetRetriever(ragService)
 	}

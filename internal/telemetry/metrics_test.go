@@ -97,3 +97,20 @@ func TestSPEC_CORE_72_R4_AFIPIntentCounter(t *testing.T) {
 		t.Errorf("snapshot = %v", s.AFIPByIntent)
 	}
 }
+
+// SPEC-CORE-72.R9: OR fills of the lexical index are counted in /metrics and
+// in the admin telemetry snapshot.
+func TestSPEC_CORE_72_R9_LexicalORFallbackCounter(t *testing.T) {
+	m := NewMetricsCollector()
+	if out := m.Prometheus(); !strings.Contains(out, "aipods_rag_lexical_or_fallback_total 0") {
+		t.Fatalf("missing counter before any fill:\n%s", out)
+	}
+	m.RecordLexicalORFallback()
+	m.RecordLexicalORFallback()
+	if out := m.Prometheus(); !strings.Contains(out, "# TYPE aipods_rag_lexical_or_fallback_total counter\naipods_rag_lexical_or_fallback_total 2") {
+		t.Errorf("counter not exported:\n%s", out)
+	}
+	if s := m.Snapshot(); s.LexicalORFallbacks != 2 {
+		t.Errorf("snapshot = %d, want 2", s.LexicalORFallbacks)
+	}
+}
