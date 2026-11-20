@@ -16,6 +16,8 @@ type userAPI struct {
 	t  *testing.T
 	r  *gin.Engine
 	st store.Store
+	// guard lets a test register more routes on the same engine.
+	guard *auth.Guard
 }
 
 func newUserAPI(t *testing.T) *userAPI {
@@ -41,7 +43,7 @@ func newUserAPI(t *testing.T) *userAPI {
 	registerAuthRoutes(r, st, guard, a)
 	registerUserRoutes(r, st, guard, a)
 	registerRAGStrategyRoutes(r, st, guard, a)
-	return &userAPI{t: t, r: r, st: st}
+	return &userAPI{t: t, r: r, st: st, guard: guard}
 }
 
 func (u *userAPI) call(method, path, token string, body any) (int, map[string]any) {

@@ -109,6 +109,11 @@ type DynamicSmartRouter struct {
 	onFallback    func()
 	vectorBreaker *CircuitBreaker
 
+	// Model per task and per tenant (SPEC-CORE-74). Nil means every task uses
+	// the base client as before.
+	llmRuntime    *llm.Runtime
+	modelResolver ModelResolver
+
 	// Semantic cache (SPEC-CORE-71). Nil disables it.
 	cache ResponseCache
 
@@ -183,6 +188,49 @@ func (r *DynamicSmartRouter) SetLLM(c llm.Client) {
 	r.llm = c
 }
 
+// ModelResolver returns the effective LLM models of a tenant: its own
+// configuration over the platform's (SPEC-CORE-74.R6).
+type ModelResolver func(ctx context.Context, tenantID string) llm.Models
+
+// SetLLMRuntime enables a model per task with its fallback chain
+// (SPEC-CORE-74). resolver may be nil: every tenant then uses rt.Defaults.
+func (r *DynamicSmartRouter) SetLLMRuntime(rt *llm.Runtime, resolver ModelResolver) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.llmRuntime = rt
+	r.modelResolver = resolver
+}
+
+// taskClients are the LLM clients of one query, one per task.
+type taskClients struct {
+	classify llm.Client
+	expand   llm.Client
+	answer   llm.Client
+}
+
+// clientsFor binds the base client to each task with the tenant's models.
+// The tenant's configuration is read once per query, after the cache miss
+// (SPEC-CORE-74.R7). platformAnswer is the answer model of the platform, or
+// "" when no runtime is configured.
+func clientsFor(ctx context.Context, base llm.Client, rt *llm.Runtime, resolver ModelResolver, tenantID string) (tc taskClients, platformAnswer string) {
+	if base == nil || rt == nil {
+		return taskClients{classify: base, expand: base, answer: base}, ""
+	}
+	models := rt.Defaults
+	if resolver != nil {
+		models = resolver(ctx, tenantID)
+	}
+	platformAnswer = rt.Defaults.Answer
+	if platformAnswer == "" {
+		platformAnswer = base.Model()
+	}
+	return taskClients{
+		classify: rt.Client(base, llm.TaskClassify, models),
+		expand:   rt.Client(base, llm.TaskExpand, models),
+		answer:   rt.Client(base, llm.TaskAnswer, models),
+	}, platformAnswer
+}
+
 // SetRetriever enables RAG context for drafted answers.
 func (r *DynamicSmartRouter) SetRetriever(ret Retriever) {
 	r.mu.Lock()
@@ -252,8 +300,13 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 
 	r.mu.RLock()
 	client := r.llm
+	rt, resolver := r.llmRuntime, r.modelResolver
+	r.mu.RUnlock()
+	clients, platformAnswer := clientsFor(ctx, client, rt, resolver, tenantID)
+
+	r.mu.RLock()
 	deps := retrieval{vector: r.retriever, lexical: r.lexical, strategy: r.strategy, topK: r.topK}
-	target := r.selectPod(ctx, client, tenantID, query)
+	target := r.selectPod(ctx, clients.classify, tenantID, query)
 	r.mu.RUnlock()
 
 	res, err := target.ProcessQuery(ctx, tenantID, query, dryRun)
@@ -268,10 +321,16 @@ func (r *DynamicSmartRouter) RouteAndExecute(ctx context.Context, tenantID, quer
 	if err != nil || client == nil || res == nil {
 		return res, err
 	}
-	out, globalSources := r.draftAnswer(ctx, client, deps, tenantID, query, res)
+	out, globalSources := r.draftAnswer(ctx, clients, deps, tenantID, query, res)
 	if cache != nil && cacheable(out, dryRun) {
 		global := globalSources && globalCachePods[out.PodID] &&
 			!strings.Contains(strings.ToLower(out.Answer), strings.ToLower(tenantID))
+		// GLOBAL only takes answers drafted by the platform's answer model: a
+		// tenant's own model or a fallback stays in the tenant's partition
+		// (SPEC-CORE-74.R14).
+		if platformAnswer != "" && out.Model != platformAnswer {
+			global = false
+		}
 		cache.StoreResponse(ctx, tenantID, query, out, global)
 	}
 	return out, nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"strconv"
@@ -21,6 +22,9 @@ type aiStack struct {
 	embedder string
 	// llmTimeout bounds each LLM call (LLM_TIMEOUT, SPEC-CORE-73.R3); zero when there is no LLM.
 	llmTimeout time.Duration
+	// models is the model per task, the fallback chain and the allowed list
+	// (SPEC-CORE-74).
+	models llmSettings
 }
 
 var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
@@ -77,8 +81,10 @@ func buildEmbedder(getenv func(string) string) embed.Embedder {
 }
 
 // buildAIStack reads ANTHROPIC_API_KEY, ANTHROPIC_MODEL, the embedding
-// settings (see buildEmbedder), QDRANT_URL, QDRANT_API_KEY and QDRANT_COLLECTION.
-func buildAIStack(getenv func(string) string) aiStack {
+// settings (see buildEmbedder), QDRANT_URL, QDRANT_API_KEY and QDRANT_COLLECTION,
+// plus the model per task of SPEC-CORE-74 (see loadLLMSettings). It fails
+// when a configured model is not allowed.
+func buildAIStack(getenv func(string) string) (aiStack, error) {
 	stack := aiStack{llmMode: "disabled", embedder: "disabled"}
 
 	if e := buildEmbedder(getenv); e != nil {
@@ -97,16 +103,39 @@ func buildAIStack(getenv func(string) string) aiStack {
 		}
 	}
 
+	baseModel := strings.TrimSpace(getenv("ANTHROPIC_MODEL"))
+	if baseModel == "" {
+		baseModel = llm.DefaultModel
+	}
+	llmTimeout := durationEnv(getenv, "LLM_TIMEOUT", llm.DefaultTimeout)
+	models, err := loadLLMSettings(getenv, baseModel, llmTimeout)
+	if err != nil {
+		return aiStack{}, fmt.Errorf("llm: %w", err)
+	}
+	stack.models = models
+
 	if key := getenv("ANTHROPIC_API_KEY"); key != "" {
-		c := llm.NewAnthropicClient(key, getenv("ANTHROPIC_MODEL"))
-		c.SetTimeout(durationEnv(getenv, "LLM_TIMEOUT", llm.DefaultTimeout))
+		c := llm.NewAnthropicClient(key, baseModel)
+		c.SetTimeout(llmTimeout)
 		stack.llm = c
 		stack.llmTimeout = c.Timeout()
-		stack.llmMode = "anthropic:" + c.Model()
+		// llm keeps its format: the model that drafts the answers (R16).
+		stack.llmMode = "anthropic:" + models.defaults.Answer
 	} else {
 		log.Println("WARNING: ANTHROPIC_API_KEY not set; router and answers run in prototype mode")
 	}
-	return stack
+	return stack, nil
+}
+
+// llmRuntime wires the task clients to the metrics (SPEC-CORE-74.R15).
+func (s aiStack) llmRuntime(onRequest func(task, model, outcome string), onFallback func(task, from, to string)) *llm.Runtime {
+	return &llm.Runtime{
+		Defaults:       s.models.defaults,
+		Budget:         s.models.budget,
+		AttemptTimeout: s.models.attemptTimeout,
+		OnRequest:      func(t llm.Task, model, outcome string) { onRequest(string(t), model, outcome) },
+		OnFallback:     func(t llm.Task, from, to string) { onFallback(string(t), from, to) },
+	}
 }
 
 // vectorStoreName is shown in /healthz.

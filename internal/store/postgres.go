@@ -435,6 +435,56 @@ func (p *Postgres) GetRAGStrategy(ctx context.Context, tenantID string) (string,
 	return s, notFound(err)
 }
 
+func (p *Postgres) GetLLMModels(ctx context.Context, tenantID string) (TenantLLMModels, error) {
+	var classify, expand, answer, fallback *string
+	err := p.pool.QueryRow(ctx,
+		`SELECT llm_model_classify, llm_model_expand, llm_model_answer, llm_fallback_models FROM tenants WHERE id = $1`,
+		tenantID).Scan(&classify, &expand, &answer, &fallback)
+	if err != nil {
+		return TenantLLMModels{}, notFound(err)
+	}
+	str := func(v *string) string {
+		if v == nil {
+			return ""
+		}
+		return *v
+	}
+	out := TenantLLMModels{Classify: str(classify), Expand: str(expand), Answer: str(answer)}
+	if fallback != nil {
+		out.FallbackSet = true
+		for _, f := range strings.Split(*fallback, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				out.Fallback = append(out.Fallback, f)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (p *Postgres) SetLLMModels(ctx context.Context, tenantID string, m TenantLLMModels) error {
+	null := func(v string) *string {
+		if v == "" {
+			return nil
+		}
+		return &v
+	}
+	var fallback *string
+	if m.FallbackSet {
+		joined := strings.Join(m.Fallback, ",")
+		fallback = &joined
+	}
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE tenants SET llm_model_classify = $2, llm_model_expand = $3, llm_model_answer = $4, llm_fallback_models = $5 WHERE id = $1`,
+		tenantID, null(m.Classify), null(m.Expand), null(m.Answer), fallback)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (p *Postgres) SetRAGStrategy(ctx context.Context, tenantID, strategy string) error {
 	if !tenant.ValidRAGStrategy(strategy) {
 		return ErrInvalid

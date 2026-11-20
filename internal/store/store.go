@@ -92,6 +92,17 @@ type DynamicPod struct {
 	UpdatedAt   time.Time
 }
 
+// TenantLLMModels is a tenant's own LLM configuration (SPEC-CORE-74.R5). An
+// empty task model inherits the platform's. FallbackSet false inherits the
+// platform's fallback chain; true with an empty Fallback means no chain.
+type TenantLLMModels struct {
+	Classify    string
+	Expand      string
+	Answer      string
+	Fallback    []string
+	FallbackSet bool
+}
+
 // Store is everything the core persists. tenantID "" in a List call means
 // all tenants; callers must only pass "" for cross-tenant roles.
 type Store interface {
@@ -102,6 +113,12 @@ type Store interface {
 	// SetRAGStrategy returns ErrInvalid for an unknown strategy and
 	// ErrNotFound for an unknown tenant.
 	SetRAGStrategy(ctx context.Context, tenantID, strategy string) error
+	// GetLLMModels returns the tenant's own LLM models (SPEC-CORE-74.R5), or
+	// ErrNotFound when the tenant has no row.
+	GetLLMModels(ctx context.Context, tenantID string) (TenantLLMModels, error)
+	// SetLLMModels replaces them; ErrNotFound for an unknown tenant. Model
+	// names are validated by the caller against the allowed list.
+	SetLLMModels(ctx context.Context, tenantID string, m TenantLLMModels) error
 
 	CreateUser(ctx context.Context, u User) error
 	UserByEmail(ctx context.Context, email string) (User, error)
