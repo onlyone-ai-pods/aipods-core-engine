@@ -277,7 +277,10 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 	}
 
 	// Initialize LLM + RAG from the environment (SPEC-CORE-66)
-	ai := buildAIStack(getenv)
+	ai, err := buildAIStack(getenv)
+	if err != nil {
+		return err
+	}
 	drain := loadDrainConfig(getenv)
 	if ai.llmTimeout > 0 && drain.ShutdownTimeout <= ai.llmTimeout {
 		log.Printf("WARNING: SHUTDOWN_TIMEOUT (%s) should be longer than LLM_TIMEOUT (%s), or draining cuts LLM answers", drain.ShutdownTimeout, ai.llmTimeout)
@@ -314,24 +317,21 @@ func run(ctx context.Context, stopSignals func(), getenv func(string) string) er
 	smartRouter.SetTopK(ragTopKFromEnv(os.Getenv))
 	if ai.llm != nil {
 		smartRouter.SetLLM(ai.llm)
+		// Model per task and per tenant, with a fallback chain (SPEC-CORE-74).
+		metricsCollector.SetLLMModels(ai.models.allowed)
+		smartRouter.SetLLMRuntime(
+			ai.llmRuntime(metricsCollector.RecordLLMRequest, metricsCollector.RecordLLMFallback),
+			storeModelResolver(st, ai.models))
 	}
 	registerRAGStrategyRoutes(r, st, guard, auditLog)
+	registerLLMModelRoutes(r, st, guard, auditLog, ai.models)
 
 	// Healthcheck Endpoint: kept for compatibility, liveness semantics. The
 	// database state is cached so this public endpoint does not query
 	// Postgres on every call (SPEC-CORE-73.R6).
 	r.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":       "healthy",
-			"version":      buildVersion,
-			"color":        color,
-			"llm":          ai.llmMode,
-			"vector_store": ai.vectorStoreName(),
-			"embedder":     ai.embedder,
-			"lexical_rag":  ragService.LexicalName(),
-			"database":     probes.databaseStatus(c.Request.Context()),
-			"auth_mode":    guard.Mode,
-		})
+		c.JSON(http.StatusOK, healthzPayload(buildVersion, color, ai, ragService.LexicalName(),
+			probes.databaseStatus(c.Request.Context()), string(guard.Mode)))
 	})
 
 	// Swarm Protocol Multi-Pod Orchestration Endpoint (Issue #12 / SPEC-CORE-33)

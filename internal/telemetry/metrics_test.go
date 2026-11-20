@@ -114,3 +114,30 @@ func TestSPEC_CORE_72_R9_LexicalORFallbackCounter(t *testing.T) {
 		t.Errorf("snapshot = %d, want 2", s.LexicalORFallbacks)
 	}
 }
+
+// SPEC-CORE-74.R15: LLM calls and fallback hops with bounded labels.
+func TestSPEC_CORE_74_R15_LLMMetrics(t *testing.T) {
+	m := NewMetricsCollector()
+	m.SetLLMModels([]string{"claude-opus-5-5", "claude-sonnet-5-5"})
+	m.RecordLLMRequest("answer", "claude-opus-5-5", "error")
+	m.RecordLLMRequest("answer", "claude-sonnet-5-5", "ok")
+	m.RecordLLMRequest("answer", "claude-sonnet-5-5", "ok")
+	m.RecordLLMFallback("answer", "claude-opus-5-5", "claude-sonnet-5-5")
+	// Values outside the known sets never become labels.
+	m.RecordLLMRequest("tenant ACME", "consulta del cliente", "boom")
+
+	out := m.Prometheus()
+	for _, want := range []string{
+		`aipods_llm_requests_total{task="answer",model="claude-opus-5-5",outcome="error"} 1`,
+		`aipods_llm_requests_total{task="answer",model="claude-sonnet-5-5",outcome="ok"} 2`,
+		`aipods_llm_fallback_total{task="answer",from="claude-opus-5-5",to="claude-sonnet-5-5"} 1`,
+		`aipods_llm_requests_total{task="other",model="other",outcome="other"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "ACME") || strings.Contains(out, "consulta") {
+		t.Error("free text leaked into the metric labels")
+	}
+}

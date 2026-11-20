@@ -24,10 +24,10 @@ Reglas:
 // On any LLM error it logs and returns the pod result unchanged (SPEC-CORE-66.R8).
 // globalSources reports that it used at least one document and that every
 // document came from the GLOBAL tenant (SPEC-CORE-71.R2).
-func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client, deps retrieval, tenantID, query string, res *pod.PodResponse) (out *pod.PodResponse, globalSources bool) {
+func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, clients taskClients, deps retrieval, tenantID, query string, res *pod.PodResponse) (out *pod.PodResponse, globalSources bool) {
 	var docs strings.Builder
 	var citations []string
-	hits, ragUsed := r.retrieve(ctx, client, deps, tenantID, query)
+	hits, ragUsed := r.retrieve(ctx, clients.expand, deps, tenantID, query)
 	globalSources = len(hits) > 0
 	for _, h := range hits {
 		if h.Chunk.TenantID != rag.GlobalTenant {
@@ -52,7 +52,7 @@ func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client,
 		prompt.WriteString("No hay documentos del cliente relevantes para esta consulta.\n")
 	}
 
-	answer, err := client.Complete(ctx, llm.Request{
+	answer, model, err := completeWithModel(ctx, clients.answer, llm.Request{
 		System:    answerSystem,
 		User:      prompt.String(),
 		MaxTokens: 16000,
@@ -66,13 +66,27 @@ func (r *DynamicSmartRouter) draftAnswer(ctx context.Context, client llm.Client,
 	drafted := *res
 	out = &drafted
 	out.Answer = answer
-	out.Model = client.Model()
+	out.Model = model
 	out.RAGStrategy = ragUsed
 	for _, c := range res.Citations {
 		citations = appendUnique(citations, c)
 	}
 	out.Citations = citations
 	return out, globalSources
+}
+
+// modelReporter is a client that says which model produced the text: the
+// task's model or one of its fallbacks (SPEC-CORE-74.R13).
+type modelReporter interface {
+	CompleteWithModel(ctx context.Context, req llm.Request) (text, model string, err error)
+}
+
+func completeWithModel(ctx context.Context, c llm.Client, req llm.Request) (string, string, error) {
+	if mr, ok := c.(modelReporter); ok {
+		return mr.CompleteWithModel(ctx, req)
+	}
+	out, err := c.Complete(ctx, req)
+	return out, c.Model(), err
 }
 
 func appendUnique(list []string, v string) []string {

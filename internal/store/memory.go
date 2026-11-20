@@ -18,6 +18,7 @@ type Memory struct {
 	secrets   map[string]Secret // by tenant/key
 	audit     []AuditEvent
 	ragStrat  map[string]string // by tenant id; missing = default
+	llmModels map[string]TenantLLMModels
 	sagas     map[string]Saga
 	pods      map[string]DynamicPod
 }
@@ -29,6 +30,7 @@ func NewMemory() *Memory {
 		approvals: map[string]Approval{},
 		secrets:   map[string]Secret{},
 		ragStrat:  map[string]string{},
+		llmModels: map[string]TenantLLMModels{},
 		sagas:     map[string]Saga{},
 		pods:      map[string]DynamicPod{},
 	}
@@ -275,6 +277,31 @@ func (m *Memory) GetRAGStrategy(_ context.Context, tenantID string) (string, err
 		return s, nil
 	}
 	return string(tenant.DefaultRAGStrategy), nil
+}
+
+func (m *Memory) GetLLMModels(_ context.Context, tenantID string) (TenantLLMModels, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if _, ok := m.tenants[tenantID]; !ok {
+		return TenantLLMModels{}, ErrNotFound
+	}
+	out := m.llmModels[tenantID]
+	out.Fallback = append([]string(nil), out.Fallback...)
+	return out, nil
+}
+
+func (m *Memory) SetLLMModels(_ context.Context, tenantID string, v TenantLLMModels) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.tenants[tenantID]; !ok {
+		return ErrNotFound
+	}
+	v.Fallback = append([]string(nil), v.Fallback...)
+	if !v.FallbackSet {
+		v.Fallback = nil
+	}
+	m.llmModels[tenantID] = v
+	return nil
 }
 
 func (m *Memory) SetRAGStrategy(_ context.Context, tenantID, strategy string) error {

@@ -32,6 +32,8 @@ type MetricsCollector struct {
 
 	buildVersion string
 	buildColor   string
+
+	llm *llmMetrics // SPEC-CORE-74.R15
 }
 
 var globalCollector *MetricsCollector
@@ -43,7 +45,7 @@ func GetMetricsCollector() *MetricsCollector {
 }
 
 func NewMetricsCollector() *MetricsCollector {
-	return &MetricsCollector{requestsByPodStatus: make(map[string]int64), afipByIntent: make(map[string]int64)}
+	return &MetricsCollector{requestsByPodStatus: make(map[string]int64), afipByIntent: make(map[string]int64), llm: newLLMMetrics()}
 }
 
 // SetSources wires the live sources that the collector reads on demand.
@@ -216,6 +218,8 @@ func (m *MetricsCollector) Prometheus() string {
 		fmt.Fprintf(&b, "aipods_afip_queries_total{intent=%q} %d\n", i, s.AFIPByIntent[i])
 	}
 	b.WriteString("\n")
+	m.llm.prometheus(&b)
+
 	metric("aipods_cache_hits_total", "counter", "Semantic cache hits.", s.CacheHits)
 	metric("aipods_cache_misses_total", "counter", "Semantic cache misses.", s.CacheMisses)
 	hitRatio := 0.0

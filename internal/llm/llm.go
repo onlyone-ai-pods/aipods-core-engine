@@ -34,6 +34,11 @@ type Request struct {
 	User      string
 	MaxTokens int64
 	Effort    Effort
+	// Model overrides the client's model for this call (SPEC-CORE-74.R3).
+	Model string
+	// NoRetry turns off the SDK's automatic retries for this call, used when
+	// a fallback model follows (SPEC-CORE-74.R12).
+	NoRetry bool
 }
 
 // Client is the minimal surface the core needs from an LLM provider.

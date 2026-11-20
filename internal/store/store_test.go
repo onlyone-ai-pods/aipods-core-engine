@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -220,6 +221,58 @@ func TestRAGStrategy(t *testing.T) {
 			}
 			if err := s.SetRAGStrategy(ctx, "NO_SUCH_TENANT", "query_expansion"); !errors.Is(err, ErrNotFound) {
 				t.Errorf("unknown tenant set: %v", err)
+			}
+		})
+	}
+}
+
+// SPEC-CORE-74.R5: each tenant keeps its own LLM models; empty means inherit.
+func TestSPEC_CORE_74_R5_TenantLLMModels(t *testing.T) {
+	ctx := context.Background()
+	for name, mk := range stores(t) {
+		t.Run(name, func(t *testing.T) {
+			s := mk()
+			if _, err := s.GetLLMModels(ctx, "NO_SUCH_TENANT"); !errors.Is(err, ErrNotFound) {
+				t.Errorf("unknown tenant: %v", err)
+			}
+			if err := s.SetLLMModels(ctx, "NO_SUCH_TENANT", TenantLLMModels{}); !errors.Is(err, ErrNotFound) {
+				t.Errorf("unknown tenant set: %v", err)
+			}
+			id := "TENANT_LLM_" + name
+			if err := s.EnsureTenant(ctx, id, "Llm"); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.GetLLMModels(ctx, id)
+			if err != nil || got.Classify != "" || got.Expand != "" || got.Answer != "" || got.FallbackSet || len(got.Fallback) != 0 {
+				t.Fatalf("default must inherit everything: %+v, %v", got, err)
+			}
+
+			want := TenantLLMModels{Classify: "claude-haiku-5-5", Answer: "claude-sonnet-5-5",
+				Fallback: []string{"claude-sonnet-5-5", "claude-haiku-5-5"}, FallbackSet: true}
+			if err := s.SetLLMModels(ctx, id, want); err != nil {
+				t.Fatal(err)
+			}
+			got, _ = s.GetLLMModels(ctx, id)
+			if got.Classify != want.Classify || got.Expand != "" || got.Answer != want.Answer ||
+				!got.FallbackSet || strings.Join(got.Fallback, ",") != "claude-sonnet-5-5,claude-haiku-5-5" {
+				t.Errorf("after set = %+v", got)
+			}
+
+			// An explicit empty chain is different from inheriting it.
+			if err := s.SetLLMModels(ctx, id, TenantLLMModels{FallbackSet: true}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ = s.GetLLMModels(ctx, id); !got.FallbackSet || len(got.Fallback) != 0 || got.Classify != "" {
+				t.Errorf("explicit empty chain = %+v", got)
+			}
+			if err := s.SetLLMModels(ctx, id, TenantLLMModels{}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ = s.GetLLMModels(ctx, id); got.FallbackSet {
+				t.Errorf("inherit again = %+v", got)
+			}
+			if other, _ := s.GetLLMModels(ctx, "GLOBAL"); other.Classify != "" || other.FallbackSet {
+				t.Errorf("other tenant changed: %+v", other)
 			}
 		})
 	}

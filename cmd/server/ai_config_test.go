@@ -4,6 +4,15 @@ import (
 	"testing"
 )
 
+func mustAIStack(t *testing.T, getenv func(string) string) aiStack {
+	t.Helper()
+	s, err := buildAIStack(getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func envMap(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
@@ -11,7 +20,7 @@ func envMap(m map[string]string) func(string) string {
 // SPEC-CORE-70.R5: with no embedding settings the core starts without Ollama
 // and without a vector store.
 func TestBuildAIStackPrototypeMode(t *testing.T) {
-	s := buildAIStack(envMap(nil))
+	s := mustAIStack(t, envMap(nil))
 	if s.llm != nil || s.llmMode != "disabled" {
 		t.Errorf("expected LLM disabled, got %s", s.llmMode)
 	}
@@ -21,7 +30,7 @@ func TestBuildAIStackPrototypeMode(t *testing.T) {
 }
 
 func TestBuildAIStackWithoutOllama(t *testing.T) {
-	s := buildAIStack(envMap(map[string]string{
+	s := mustAIStack(t, envMap(map[string]string{
 		"ANTHROPIC_API_KEY": "test-key",
 		"QDRANT_URL":        "http://qdrant:6333",
 		"EMBED_DIM":         "1024",
@@ -32,7 +41,7 @@ func TestBuildAIStackWithoutOllama(t *testing.T) {
 }
 
 func TestBuildAIStackRealMode(t *testing.T) {
-	s := buildAIStack(envMap(map[string]string{
+	s := mustAIStack(t, envMap(map[string]string{
 		"ANTHROPIC_API_KEY": "test-key",
 		"OLLAMA_URL":        "http://ollama:11434",
 		"QDRANT_URL":        "http://qdrant:6333",
@@ -73,7 +82,7 @@ func TestBuildEmbedderProviders(t *testing.T) {
 }
 
 func TestQdrantCollectionPerEmbedder(t *testing.T) {
-	s := buildAIStack(envMap(map[string]string{"VOYAGE_API_KEY": "k", "QDRANT_URL": "http://qdrant:6333"}))
+	s := mustAIStack(t, envMap(map[string]string{"VOYAGE_API_KEY": "k", "QDRANT_URL": "http://qdrant:6333"}))
 	if s.vectorStoreName() != "qdrant+voyage:voyage-3.5-lite" {
 		t.Errorf("got %s", s.vectorStoreName())
 	}
