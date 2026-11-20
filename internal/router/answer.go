@@ -11,8 +11,6 @@ import (
 	"github.com/martinllanos/only-ai-pods/internal/rag"
 )
 
-const ragTopK = 5
-
 const answerSystem = `Sos un consultor senior de AI Pods Enterprise y respondés a clientes de empresas argentinas en español rioplatense, claro y profesional.
 
 Reglas:

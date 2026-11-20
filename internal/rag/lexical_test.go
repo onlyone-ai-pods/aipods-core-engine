@@ -91,9 +91,14 @@ func TestLexicalSearch(t *testing.T) {
 				}
 			}
 
-			// Spanish stemming: "facturación" finds "factura".
+			// Spanish stemming: "facturación" finds "factura" in a1's content
+			// and, since SPEC-CORE-72.R7, in g1's file name (ARCA_Factura_E.pdf).
 			stemmed, err := idx.Search(acme, []string{"facturación"}, 5)
-			if err != nil || len(stemmed) != 1 || stemmed[0].Chunk.ChunkID != "a1" {
+			ids := map[string]bool{}
+			for _, h := range stemmed {
+				ids[h.Chunk.ChunkID] = true
+			}
+			if err != nil || len(stemmed) != 2 || !ids["a1"] || !ids["g1"] {
 				t.Errorf("stemmed = %+v, %v", stemmed, err)
 			}
 			// Without accents: "recategorizacion" finds "Recategorización".
